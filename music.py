@@ -64,13 +64,13 @@ class Arrangement(object):
     def build_arrangement(self):
         # Song structure is Intro/Chorus/(Verse/Chorus pairs)/Outro
         self.melody = []
-        self.melody += (self.Intro.melody) 
-        self.melody += (self.Chorus.melody)
+        self.melody.append(self.Intro.melody) 
+        self.melody.append(self.Chorus.melody)
         for i in range(self.numVerses):
-            self.melody += (self.Verses[i].melody)
-            self.melody += (self.Chorus.melody)
-        self.melody += (self.Outro.melody)
-        return [self.melody] ## TODO HARMONY
+            self.melody.append(self.Verses[i].melody)
+            self.melody.append(self.Chorus.melody)
+        self.melody.append(self.Outro.melody)
+        return [cat(self.melody)] ## TODO HARMONY
 
 class Chorus(object):
     def __init__(self, length, key):
@@ -162,7 +162,18 @@ def getInstruments():
         instr.append(int(sys.argv[i]))
     return instr
 	
-
+# Concatenate components of arrangement
+def cat(seqs):
+    res = []
+    start_time = 0
+    for seq in seqs:
+        last = start_time
+        for note in seq:
+            res.append(Note(note.pitch, start_time + note.time, note.duration, note.volume))
+            last = start_time + note.time + note.duration
+        start_time = last
+    return res
+    
 MAJOR = [0,2,4,5,7,9,11]
 MINOR = [0,2,3,5,7,8,10]
 PHRYGIAN = [0,1,4,5,7,8,10]
