@@ -17,7 +17,7 @@ def write_midi(filename, sequence):
     track = 0
     start_time = 0
     midi.addTrackName(track, start_time, 'genmus')
-    tempo = random.randrange(120, 350)
+    tempo = random.randrange(120, 480)
     midi.addTempo(track, start_time, tempo)
     for seq in range(len(sequence)):
         for note in sequence[seq]:
@@ -47,10 +47,10 @@ class Arrangement(object):
         self.length_outro = random.randrange(10, 20)
         self.Outro = None # List of notes used as the end of the song
     def gen(self):
+        self.Intro = Intro(self.length_intro, self.key) # Intro dictated by 
+        self.Intro.gen()
         self.Chorus = Chorus(self.length_chorus, self.key)
         self.Chorus.gen()
-        self.Intro = Intro(self.length_intro, self.key)
-        self.Intro.gen()
         for i in range(self.numVerses):
             self.Verses.append(Verse(self.length_verse, self.key))
             self.Verses[i].gen()
@@ -58,7 +58,7 @@ class Arrangement(object):
         self.Outro.gen()
         print "Length of Intro:", (self.length_intro)
         print "Length of Chorus:", (self.length_chorus) 
-        print"Length of Verses:", (self.length_verse)
+        print "Length of Verses:", (self.length_verse)
         print "Number of verses:", (self.numVerses)
         
     def build_arrangement(self):
@@ -71,6 +71,25 @@ class Arrangement(object):
             self.melody.append(self.Chorus.melody)
         self.melody.append(self.Outro.melody)
         return [cat(self.melody)] ## TODO HARMONY
+        
+# List of interval jumps + associated probability -- Each integer represents an interval on the song's scale
+jump_list = [(2, .45), (3, .3), (4, .15), (5, .1)]
+
+class Intro(object):
+    def __init__(self, length, key):
+        self.length = length
+        self.melody = []
+        self.harmonies = []
+        self.key = key
+        self.DIRECTION = random.randrange(35, 100) # < DIRECTION Implies direction change
+        self.JUMPINESS = random.randrange(0, 100) # < JUMPINESS Implies jump
+        self.MOBILITY = random.randrange(60, 90) # < MOBILITY Implies moving notes
+        self.CHORDINESS = random.randrange(0, 30) # < CHORDINESS Implies a chord
+    def gen(self):
+        mel = Melody(self.length, self.key)
+        mel.gen()
+        self.melody = mel.sequence
+        ## TODO Harmony
 
 class Chorus(object):
     def __init__(self, length, key):
@@ -83,20 +102,8 @@ class Chorus(object):
         mel.gen()
         self.melody = mel.sequence
         ## TODO Harmony
-
-class Intro(object):
-    def __init__(self, length, key):
-        self.length = length
-        self.melody = []
-        self.harmonies = []
-        self.key = key
-    def gen(self):
-        mel = Melody(self.length, self.key)
-        mel.gen()
-        self.melody = mel.sequence[::-1]
-        ## TODO Harmony
-        
-class Outro(object):
+    
+class Verse(object):
     def __init__(self, length, key):
         self.length = length
         self.melody = []
@@ -107,8 +114,8 @@ class Outro(object):
         mel.gen()
         self.melody = mel.sequence
         ## TODO Harmony
-
-class Verse(object):
+    
+class Outro(object):
     def __init__(self, length, key):
         self.length = length
         self.melody = []
@@ -132,7 +139,18 @@ class Note(object):
         self.volume = volume
         
 # Probabilities that a given note is followed by another note length
-noteDict = {1:[(3, .8), (1, .19), (4, .01)], 2:[(2, .45), (1, .05), (4, .2), (6, .3)], 3:[(3, .45), (1, .45), (4, .1)], 4:[(4, .3), (2, .3), (6, .25), (8, .15)], 6:[(6, .3), (2, .5)], 8:[(8, .2), (4, .45), (2, .35)]}
+# Cool thing about the weighted choice - probabilities don't need to sum to 1!
+noteDict_melody = {1:[(1, .3), (2, .15), (3, .4), (4, .1), (6, 0)], 
+                   2:[(1, .1), (2, .4), (3, .15), (4, .35), (6, 0)], 
+                   3:[(1, .4), (2, .1), (3, .3), (4, .2), (6, 0)], 
+                   4:[(1, .17), (2, .2), (3, .13), (4, .5), (6, .3)], 
+                   6:[(1, .025), (2, .275), (3, .05), (4, .5), (6, .2)]}
+                   
+#noteDict_harmony = {2:[(2, ), (3, ), (4, ), (6, .5), (8, 0)], 
+ #                   3:[(2, ), (3, .7), (4, ), (6, .3), (8, 0)], 
+  #                  4:[(2, ), (3, ), (4, ), (6, ), (8, .3)], 
+   #                 6:[(2, ), (3, ), (4, ), (6, ), (8, .2)],
+    #                8:[(2, 0), (3, 0), (4, ), (6, ), (8, .4)}
 
 class Rhythm(object):
     def __init__(self, period):
@@ -140,12 +158,12 @@ class Rhythm(object):
         self.rhythm = []
         
     def gen(self):
-        current = random.choice([1, 2, 3, 4, 6, 8]) # Starting notes, with 1 being 16th note
+        current = random.choice([1, 2, 3, 4, 6]) # Starting notes, with 1 being 16th note
         i = 0
         while i < self.period:
             self.rhythm.append(current)
             i += current
-            current = weighted_choice(noteDict[current])
+            current = weighted_choice(noteDict_melody[current])
         return self.rhythm
 
 # Lists of instruments that pair well together, maybe.
@@ -171,7 +189,7 @@ def cat(seqs):
         for note in seq:
             res.append(Note(note.pitch, start_time + note.time, note.duration, note.volume))
             last = start_time + note.time + note.duration
-        start_time = last
+        start_time = last + 1
     return res
     
 MAJOR = [0,2,4,5,7,9,11]
@@ -187,6 +205,9 @@ def gen_scale():
     
 SCALE = gen_scale()
 
+def gen_chords(): # TODO, based on scale. See wikipedia article on chord (music)
+    return [[4, 7], [7, 16], [-3, 4], [3, 8], [4], [7]]
+
 def weighted_choice(choices):
     values, weights = zip(*choices)
     total = 0
@@ -198,9 +219,8 @@ def weighted_choice(choices):
     i = bisect(cum_weights, x)
     return values[i]
     
-DIRECTION = random.randrange(0, 100) # < DIRECTION Implies direction change
-JUMPINESS = random.randrange(0, 100) # < JUMPINESS Implies jump
-MOBILITY = random.randrange(60, 90) # < MOBILITY Implies moving notes
+# List of common chords. Root note is implied
+chordList = gen_chords() # TODO Chordlist
 
 class Melody(object):
     def __init__(self, length, key):
@@ -209,6 +229,10 @@ class Melody(object):
         self.sequence = []
         self.scale = SCALE
         self.length = length
+        self.DIRECTION = random.randrange(35, 100) # < DIRECTION Implies direction change
+        self.JUMPINESS = random.randrange(0, 100) # < JUMPINESS Implies jump
+        self.MOBILITY = random.randrange(60, 90) # < MOBILITY Implies moving notes
+        self.CHORDINESS = random.randrange(0, 30) # < CHORDINESS Implies a chord
     def gen(self):
         self.rhythm = Rhythm(self.length).gen() ## TODO Rhythm length
         currentNote = self.key
@@ -217,11 +241,15 @@ class Melody(object):
         index = 0
         for i in self.rhythm:
             self.sequence.append(Note(currentNote, t, i, 100))
-            if (random.randrange(0, 100) < MOBILITY):
+            if (random.randrange(0, 100) < self.CHORDINESS):
+                chord = random.choice(chordList)
+                for note in chord:
+                    self.sequence.append(Note(currentNote+note, t, i, 100))
+            if (random.randrange(0, 100) < self.MOBILITY):
                 currentNote = self.key + (self.scale[index%len(self.scale)]+(index/len(self.scale))*12 if index > 0 else self.scale[-(-index%len(self.scale))]+12*(index/len(self.scale)))
-            if (random.randrange(0, 100) < DIRECTION):
+            if (random.randrange(0, 100) < self.DIRECTION):
                 currentDirection = -currentDirection
-            if (random.randrange(0, 100) < JUMPINESS):
+            if (random.randrange(0, 100) < self.JUMPINESS):
                 index += currentDirection * random.choice([2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 5])
             if (currentNote < 50 or currentNote > 100):
                 currentNote = self.key
