@@ -9,14 +9,81 @@ import time
 import sys
 from types import *
 from bisect import bisect
+# coding=utf-8
+import re
+import sys
+with open('/usr/share/dict/words') as f:
+    WORDS = [re.sub(r'\W+', '', word) for line in f for word in line.split()]
+###############################################################################
+# Markov Name model
+# A random name generator, by Peter Corbett
+# http://www.pick.ucam.org/~ptc24/mchain.html
+# This script is hereby entered into the public domain
+###############################################################################
+class Mdict:
+    def __init__(self):
+        self.d = {}
+    def __getitem__(self, key):
+        if key in self.d:
+            return self.d[key]
+        else:
+            raise KeyError(key)
+    def add_key(self, prefix, suffix):
+        if prefix in self.d:
+            self.d[prefix].append(suffix)
+        else:
+            self.d[prefix] = [suffix]
+    def get_suffix(self,prefix):
+        l = self[prefix]
+        return random.choice(l)  
 
+class MName:
+    """
+    A name from a Markov chain
+    """
+    def __init__(self, chainlen = 2):
+        """
+        Building the dictionary
+        """
+        if chainlen > 10 or chainlen < 1:
+            print "Chain length must be between 1 and 10, inclusive"
+            sys.exit(0)
+        self.mcd = Mdict() # Creates a dictionary
+        oldnames = [] # Saves original list of names
+        self.chainlen = chainlen
+        for l in WORDS:
+            l = l.strip()
+            oldnames.append(l) # Build whitespace-stripped list of names
+            s = " " * chainlen + l # s = "   "
+            for n in range(0,len(l)): # Iterate through the string l
+                self.mcd.add_key(s[n:n+chainlen], s[n+chainlen]) # For each element of string, add 
+            self.mcd.add_key(s[len(l):len(l)+chainlen], "\n")
+    
+    def New(self):
+        """
+        New name from the Markov chain
+        """
+        prefix = " " * self.chainlen # Prefix = "  "
+        name = "" 
+        suffix = ""
+        while True:
+            suffix = self.mcd.get_suffix(prefix)
+            if suffix == "\n" or len(name) > 9:
+                break
+            else:
+                name = name + suffix
+                prefix = prefix[1:] + suffix
+        if not name in WORDS:
+            return name
+        else:
+            return self.New()
 
 # Handles writeback of every channel  to file
 def write_midi(filename, sequence):
     midi = MIDIFile(1)
     track = 0
     start_time = 0
-    midi.addTrackName(track, start_time, 'genmus')
+    midi.addTrackName(track, start_time, filename[:-4])
     tempo = random.randrange(120, 480)
     midi.addTempo(track, start_time, tempo)
     for seq in range(len(sequence)):
@@ -73,8 +140,11 @@ class Arrangement(object):
         return [cat(self.melody)] ## TODO HARMONY
         
 # List of interval jumps + associated probability -- Each integer represents an interval on the song's scale
-jump_list = [(2, .45), (3, .3), (4, .15), (5, .1)]
+jump_list = [(1, .2), (2, .35), (3, .2), (4, .15), (5, .1)]
 
+'''
+The intro of the song is unique to the song and plays at the beginning
+'''
 class Intro(object):
     def __init__(self, length, key):
         self.length = length
@@ -91,6 +161,9 @@ class Intro(object):
         self.melody = mel.sequence
         ## TODO Harmony
 
+'''
+The chorus is a repeating element of the song, punctated by verses
+'''
 class Chorus(object):
     def __init__(self, length, key):
         self.length = length
@@ -103,6 +176,9 @@ class Chorus(object):
         self.melody = mel.sequence
         ## TODO Harmony
     
+'''
+A verse is a unique element of the song punctuated by the chorus
+'''
 class Verse(object):
     def __init__(self, length, key):
         self.length = length
@@ -128,8 +204,8 @@ class Outro(object):
         ## TODO Harmony
 
 '''
-    Low-level objects:
-    Notes, Rhythm, Scale generation
+Low-level objects:
+Notes, Rhythm, Scale generation
 '''
 class Note(object):
     def __init__(self, pitch, time, duration, volume):
@@ -147,10 +223,10 @@ noteDict_melody = {1:[(1, .3), (2, .15), (3, .4), (4, .1), (6, 0)],
                    6:[(1, .025), (2, .275), (3, .05), (4, .5), (6, .2)]}
                    
 #noteDict_harmony = {2:[(2, ), (3, ), (4, ), (6, .5), (8, 0)], 
- #                   3:[(2, ), (3, .7), (4, ), (6, .3), (8, 0)], 
-  #                  4:[(2, ), (3, ), (4, ), (6, ), (8, .3)], 
-   #                 6:[(2, ), (3, ), (4, ), (6, ), (8, .2)],
-    #                8:[(2, 0), (3, 0), (4, ), (6, ), (8, .4)}
+#                    3:[(2, ), (3, .7), (4, ), (6, .3), (8, 0)], 
+#                    4:[(2, ), (3, ), (4, ), (6, ), (8, .3)], 
+#                    6:[(2, ), (3, ), (4, ), (6, ), (8, .2)],
+#                    8:[(2, 0), (3, 0), (4, ), (6, ), (8, .4)}
 
 class Rhythm(object):
     def __init__(self, period):
@@ -275,7 +351,7 @@ class Harmony(object):
             self.sequence.append(Note(i.pitch+self.shift+random.choice([-8, -4, 0, 4, 8]), i.time, i.duration, 75)) ## TODO
 
 
-name = time.strftime('song-%Y-%m-%d_%H%M%S.mid')
+name = time.strftime(MName().New() + '.mid');
 print name
 instrList = getInstruments() # Get a list of instruments used, either randomly or from user input
 numHarmonies = len(instrList)-1
