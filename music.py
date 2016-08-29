@@ -7,6 +7,8 @@ import math
 import os
 import time
 import sys
+import argparse
+
 from types import *
 from bisect import bisect
 # coding=utf-8
@@ -14,12 +16,10 @@ import re
 import sys
 with open('/usr/share/dict/words') as f:
     WORDS = [re.sub(r'\W+', '', word) for line in f for word in line.split()]
-###############################################################################
-# Markov Name model
-# A random name generator, by Peter Corbett
-# http://www.pick.ucam.org/~ptc24/mchain.html
-# This script is hereby entered into the public domain
-###############################################################################
+
+'''
+Mdict and MName generate a random name for the file based on markov chains from the above file
+'''
 class Mdict:
     def __init__(self):
         self.d = {}
@@ -80,6 +80,7 @@ class MName:
 
 # Handles writeback of every channel  to file
 def write_midi(filename, sequence):
+    filename = "music/"+filename
     midi = MIDIFile(1)
     track = 0
     start_time = 0
@@ -152,7 +153,7 @@ class Intro(object):
         self.harmonies = []
         self.key = key
         self.DIRECTION = random.randrange(35, 100) # < DIRECTION Implies direction change
-        self.JUMPINESS = random.randrange(0, 100) # < JUMPINESS Implies jump
+        self.JUMPINESS = random.randrange(30, 100) # < JUMPINESS Implies jump
         self.MOBILITY = random.randrange(60, 90) # < MOBILITY Implies moving notes
         self.CHORDINESS = random.randrange(0, 30) # < CHORDINESS Implies a chord
     def gen(self):
@@ -252,8 +253,8 @@ def getInstruments():
         return random.choice(instrGroups)
     instr = []
     for i in range(1, len(sys.argv)): # Ignore program name
-        assert int(sys.argv[i]) in range(0, 128), "Instrument must be in bounds (0, 127): %d" %sys.argv[i]
-        instr.append(int(sys.argv[i]))
+        assert int(sys.argv[i]) in range(0, 128), "Instrument must be in bounds (1, 128): %d" %sys.argv[i]
+        instr.append(int(sys.argv[i])-1)
     return instr
 	
 # Concatenate components of arrangement
@@ -277,6 +278,7 @@ PERSIAN = [0,1,4,5,6,8,11]
 
 def gen_scale():
 	k = random.choice([MAJOR, MINOR, PHRYGIAN, UKRAINIAN_DORIAN, MOLOCH, PERSIAN])
+	print k
 	return k
     
 SCALE = gen_scale()
@@ -300,13 +302,13 @@ chordList = gen_chords() # TODO Chordlist
 
 class Melody(object):
     def __init__(self, length, key):
-        self.key = 72+key
+        self.key = 84+key
         self.rhythm = []
         self.sequence = []
         self.scale = SCALE
         self.length = length
         self.DIRECTION = random.randrange(35, 100) # < DIRECTION Implies direction change
-        self.JUMPINESS = random.randrange(0, 100) # < JUMPINESS Implies jump
+        self.JUMPINESS = random.randrange(50, 100) # < JUMPINESS Implies jump
         self.MOBILITY = random.randrange(60, 90) # < MOBILITY Implies moving notes
         self.CHORDINESS = random.randrange(0, 30) # < CHORDINESS Implies a chord
     def gen(self):
@@ -335,7 +337,7 @@ class Melody(object):
 class Harmony(object):
     def __init__(self, melody):
         self.melody = melody
-        self.key = melody.key#+random.randchoice(-24, -12, 0, 12) # Get a random octave shift
+        self.key = melody.key+random.randchoice(-24, -12, 0, 12) # Get a random octave shift
         self.shift = random.choice([-24, -12, 0])
         self.rhythm = [] # Currently copying the rhythm
         self.sequence = []
@@ -348,7 +350,7 @@ class Harmony(object):
         startNote = self.key
         t = 0
         for i in self.rhythm:
-            self.sequence.append(Note(i.pitch+self.shift+random.choice([-8, -4, 0, 4, 8]), i.time, i.duration, 75)) ## TODO
+            self.sequence.append(Note(i.pitch+self.shift+random.choice(chordList), i.time, i.duration, 75)) ## TODO
 
 
 name = time.strftime(MName().New() + '.mid');
