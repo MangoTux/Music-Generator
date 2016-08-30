@@ -89,8 +89,8 @@ def write_midi(filename, sequence):
     midi.addTempo(track, start_time, tempo)
     for seq in range(len(sequence)):
         for note in sequence[seq]:
-            midi.addNote(track, seq, note.pitch, note.time, note.duration, note.volume)
-        midi.addProgramChange(0, seq, 0, instrList[seq])
+            midi.addNote(track, 9, note.pitch, note.time, note.duration, note.volume)
+        # midi.addProgramChange(0, seq, 0, instrList[seq])
     f = open(filename, 'w')
     midi.writeFile(f)
     f.close()
@@ -331,6 +331,28 @@ class Melody(object):
                 index += currentDirection * random.choice([2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 4, 5])
             if (currentNote < 50 or currentNote > 100):
                 currentNote = self.key
+            t += i
+
+class Percussion(object):
+    def __init__(self, length, key):
+        self.key = key
+        self.rhythm = []
+        self.scale = SCALE
+        self.length = length
+        self.DIRECTION = random.randrange(35, 100)
+        self.JUMPINESS = random.randrange(50, 100)
+        self.MOBILITY = random.randrange(60, 90)
+        self.CHORDINESS = random.randrange(0, 30)
+    def gen(self):
+        self.rhythm = Rhythm(self.length).gen()
+        currentNote = self.key
+        t = 0
+        currentDirection = 1
+        index = 0
+        for i in self.rhythm:
+            self.sequence.append(Note(currentNote, t, i, 100))
+            if (random.randrange(0, 100) < self.MOBILITY):
+                currentNote = random.randrange(37, 80)#choice([37, 37, 37, 37, 37, 37, 37, 41, 41, 41, 42, 42, 43, 43, 48, 48])
             t += i
 
 # I don't know at the moment how this should work, aside from picking 'nice' chords relating to melody'
