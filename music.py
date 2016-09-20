@@ -77,7 +77,7 @@ class MName:
             return name
         else:
             return self.New()
-
+        
 # Handles writeback of every channel  to file
 def write_midi(filename, sequence):
     filename = "music/"+filename
@@ -375,7 +375,7 @@ class Harmony(object):
             self.sequence.append(Note(i.pitch+self.shift+random.choice(chordList), i.time, i.duration, 75)) ## TODO
 
 
-name = time.strftime(MName().New() + '.mid');
+name = time.strftime(MName().New() + '.mid')
 print name
 instrList = getInstruments() # Get a list of instruments used, either randomly or from user input
 numHarmonies = len(instrList)-1
