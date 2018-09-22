@@ -54,17 +54,17 @@ class Util:
     chord_systems = {
         'major': ['major', 'major7th', 'major9th', 'major6th', 'major7th9th', 'major7th11th', 'subdominant2ndInv'],
         'minor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'all': list(chords.keys()),
         'three': ['major', 'minor', 'relMinor1stInv', 'subdominant2ndInv', 'major6th', 'minor6th'],
         'four': ['major7th', 'minor7th', 'major9th', 'minor9th'],
         'five': ['major7th9th', 'minor7th9th', 'major7th11th', 'minor7th11th'],
-        'nice': ['major', 'minor', 'relMinor1stInv', 'subdominant2ndInv', 'minor7th', 'major6th', 'minor6th', 'minor7th11th']
+        'nice': ['major', 'minor', 'relMinor1stInv', 'subdominant2ndInv', 'minor7th', 'major6th', 'minor6th', 'minor7th11th'],
+        'all': list(chords.keys())
     }
 
     instrument_sets = [
-        {'melody':2,'harmony':2,'bass':49},
-        {'melody':0,'harmony':0,'bass':0},
-        {'melody':71,'harmony':48,'bass':60}
+        {'melody':2,'harmony':2,'bass':49,'rhythm':118},
+        {'melody':0,'harmony':0,'bass':0,'rhythm':118},
+        {'melody':71,'harmony':48,'bass':60,'rhythm':118}
     ]
 
     notes = {
@@ -301,17 +301,17 @@ class Generator:
         for i in range(verse_length):
             verse.append({"pitch":note_value, "time":0, "duration":0, "volume":100, "index":0})
         # Use midpoint displacement algorithm to build series
-        midpoint = verse_length / 2
+        midpoint = int(verse_length / 2)
         i = 1
         while i < verse_length:
-            j = verse_length/i/2
+            j = int(verse_length/i/2)
             while j < verse_length:
                 if j == midpoint:
                     verse[j]["index"] = Util().random_choice([-12, -11, -10, -9, -8, -7, -6, 6, 7, 8, 9, 10, 11, 12])
                 else:
-                    verse[j]["index"] = (verse[j - ((verse_length / i) / 2)]["index"] + verse[j + ((verse_length / i) / 2)]["index"]) / 2
+                    verse[j]["index"] = int((verse[j - int((verse_length / i) / 2)]["index"] + verse[j + int((verse_length / i) / 2)]["index"]) / 2)
                     verse[j]["index"] += random.uniform(-1.0*displace, 1.0*displace)
-                j += verse_length / i
+                j += int(verse_length / i)
             i *= 2
         elapsed_time = 0
         for i in range(len(verse)):
@@ -322,7 +322,7 @@ class Generator:
             verse[i]["duration"] = duration
             elapsed_time += duration
             verse[i]["time"] = offset + elapsed_time
-        return verse, verse[-1]["time"]+verse[-1]["duration"]
+        return verse
 
     def _v_piecewise_notes(self, offset=0, args={}):
         verse = []
@@ -361,7 +361,7 @@ class Generator:
                 joined_notes.append(i)
         for i in reversed(joined_notes):
             verse.pop(i)
-        return verse, verse[-1]["time"]+verse[-1]["duration"]
+        return verse
 
     # I'm actually having a hard time understanding how this is different than the other systems I've built.
     def _v_by_measure(self, offset=0, args={}):
@@ -389,7 +389,7 @@ class Generator:
                     "pitch":note_value, "time":self.total_note_count, "duration": duration, "volume":100, "index": index
                 }
                 verse.append(note)
-        return verse, verse[-1]["time"]+verse[-1]["duration"]
+        return verse
 
     def _verse(self, type="random", offset=0, args={}):
         if type=="midpoint_displacement":
@@ -401,29 +401,27 @@ class Generator:
         generation_type = [getattr(self, '_v_midpoint_displacement'), getattr(self, '_v_piecewise_notes'), getattr(self, '_v_by_measure')]
         return Util().random_choice(generation_type)(offset=offset, args=args)
 
-    def melody(self):
-
+    def melody(self, args={}):
+        if "structure" in args:
+            structure = args["structure"]
+        else:
+            structure = Util().random_choice(["abcbdbebf", "abcba", "ababc", "abcbdbe", "abcde", "abba", "abbc"])
+        log("Chosen structure: " + structure)
+        structure = "abcbdbebf" # One option for verse generation
+        structure_components = list(set(structure))
+        melody_components = {}
         melody = []
-        intro, offset = self._verse(0)
-        melody += intro
-        main_theme, main_theme_offset = self._verse(0)
-        for x in range(Util().random_choice([2,3])):
-            current_theme = copy.deepcopy(main_theme)
-            for y in range(len(main_theme)):
-                current_theme[y]["time"]+=offset
-            melody += current_theme
-            offset += main_theme_offset
-            bridge, offset = self._verse(offset=offset)
-            melody += bridge
-        current_theme = copy.deepcopy(main_theme)
-        for y in range(len(main_theme)):
-            current_theme[y]["time"]+=offset
-        melody += current_theme
-        offset += main_theme_offset
-        outro, offset = self._verse(offset=offset)
-        for x in range(len(outro)):
-            outro[x]["volume"] = int(outro[x]["volume"]*2/3)
-        melody += outro
+        for x in structure_components:
+            melody_components[x] = {'verse': self._verse()}
+            melody_components[x]['duration'] = melody_components[x]["verse"][-1]["time"] + melody_components[x]["verse"][-1]["duration"]
+        offset = 0
+        for x in structure:
+            # Take melody_components[x]'s list and
+            current_theme = copy.deepcopy(melody_components[x]["verse"])
+            for note in range(len(current_theme)):
+                current_theme[note]["time"] += offset
+                melody.append(current_theme[note])
+            offset += melody_components[x]["duration"]
         self.melody = melody
 
     # The harmony occasionally picks a chord to pair with the melody.
@@ -468,15 +466,32 @@ class Generator:
         self.bass = bass
 
     def rhythm(self):
+        rhythm = []
+        index = 0;
+        percussion_chance = 100 #75
+        if random.randint(0,100) > percussion_chance:
+            return
+        # Setting up a baseline for right now
+        # Create a config for note lists
+        pattern = [0.35,0.15,0.35,0.15]#Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
+        total_duration = self.melody[-1]["time"] # + self.melody[-1]["duration"]
+        while index < total_duration:
+            for i in range(len(pattern)):
+                volume = 70
+                if i%4 == 0:
+                    volume += 30
+                rhythm.append({"pitch":38,"time":index,"duration":0.05,"volume":volume})
+                index += pattern[i]
         # todo figure out. Base idea: a number of default rhythms that are optionally applied
-        pass
+        self.rhythm = rhythm
 
 class Transcriber:
     # https://soundprogramming.net/file-formats/general-midi-instrument-list/
     # 1 track, each index is a channel
     song = {"melody": { "channel": 0, "note_series": [], "program": 0},
                 "harmony": { "channel": 1, "note_series": [], "program": 0},
-                "bass": { "channel": 2, "note_series": [], "program": 0}}
+                "bass": { "channel": 2, "note_series": [], "program": 0},
+                "rhythm": { "channel": 10, "note_series": [], "program": 0}}
     program_set = Util().random_choice(Util().instrument_sets)
     for key in program_set:
         song[key]["program"] = program_set[key]
@@ -496,6 +511,7 @@ class Transcriber:
         self.song["melody"]["note_series"] = self.song_generator.melody
         self.song["harmony"]["note_series"] = self.song_generator.harmony
         self.song["bass"]["note_series"] = self.song_generator.bass
+        self.song["rhythm"]["note_series"] = self.song_generator.rhythm
         self._pad_song()
         for i in self.song:
             self.generator.addProgramChange(0, self.song[i]["channel"], 0, self.song[i]["program"])
