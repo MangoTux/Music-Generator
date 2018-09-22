@@ -62,9 +62,12 @@ class Util:
     }
 
     instrument_sets = [
+        {'melody':72,'harmony':56,'bass':61,'rhythm':112}
         {'melody':2,'harmony':2,'bass':49,'rhythm':118},
         {'melody':0,'harmony':0,'bass':0,'rhythm':118},
-        {'melody':71,'harmony':48,'bass':60,'rhythm':118}
+        {'melody':71,'harmony':48,'bass':60,'rhythm':118},
+        {'melody':67,'harmony':75,'bass':105,'rhythm':53},
+        {'melody':80,'harmony':81,'bass':87,'rhythm':84}
     ]
 
     notes = {
@@ -288,7 +291,7 @@ class Generator:
         generation_type = Util().random_choice([getattr(self, '_nm_normal_skew'), getattr(self, '_nm_step'), getattr(self, '_nm_uniform')])
         return generation_type(note, args)
 
-    def _v_midpoint_displacement(self, offset=0, args={}):
+    def _v_midpoint_displacement(self, args={}):
         verse = []
         note_value = self.base_note
         iterations = random.randint(2, 5)
@@ -297,6 +300,10 @@ class Generator:
             displace = args["roughness"]
         else:
             displace = 1
+        if "duration_type" in args:
+            duration_type = args["duration_type"]
+        else:
+            duration_type = "random"
         # Build the note series
         for i in range(verse_length):
             verse.append({"pitch":note_value, "time":0, "duration":0, "volume":100, "index":0})
@@ -318,13 +325,13 @@ class Generator:
             verse[i]["index"] = int(verse[i]["index"])
             verse[i]["pitch"] = min(max(12 * int(verse[i]["index"] / len(self.scale)) + self.scale[verse[i]["index"] % len(self.scale)] + self.base_note, 1), 126)
             # todo variate lengths, total duration and adjust to offset
-            duration = self._duration(note=(verse[i-1]["duration"] if i>0 else 1), type="markov")
+            duration = self._duration(note=(verse[i-1]["duration"] if i>0 else 1), type=duration_type)
             verse[i]["duration"] = duration
             elapsed_time += duration
-            verse[i]["time"] = offset + elapsed_time
+            verse[i]["time"] = elapsed_time
         return verse
 
-    def _v_piecewise_notes(self, offset=0, args={}):
+    def _v_piecewise_notes(self, args={}):
         verse = []
         joined_notes = []
         note_value = self.base_note
@@ -337,7 +344,7 @@ class Generator:
         else:
             base_join_threshold = 75
         if "base_duration" in args:
-            base_duration = args["base_duration"]
+            base_duration = args["duration_type"]
         else:
             base_duration = 0.5
 
@@ -349,7 +356,7 @@ class Generator:
 
             note_value = min(max(12 * int(note_index / len(self.scale)) + self.scale[note_index % len(self.scale)] + self.base_note, 1), 126)
             note = {
-                "pitch":note_value, "time":time+offset, "duration":base_duration, "volume":100, "index":note_index
+                "pitch":note_value, "time":time, "duration":base_duration, "volume":100, "index":note_index
             }
             verse.append(note)
             note_index += int(self._note_mutation(note_value, type="normal_skew", args={"cutoffs":{1: 0, 1.5: 1, 1.9: 2, 2.3: 3, 2.7: 4, 3: 5}}))
@@ -364,19 +371,23 @@ class Generator:
         return verse
 
     # I'm actually having a hard time understanding how this is different than the other systems I've built.
-    def _v_by_measure(self, offset=0, args={}):
+    def _v_by_measure(self, args={}):
+        if "duration_type" in args:
+            duration_type = args["duration_type"]
+        else:
+            duration_type = 0.5
         # Generate a main theme for the melody to repeat >1 time in song
         verse = []
         note_value = self.base_note
         measure_length = random.randint(3,10)
         # Develop each measure note-by-note
         note_count = 0
-        self.total_note_count = offset
+        self.total_note_count = 0
         index = 0 # base note
         for measure in range(measure_length):
             note_count = note_count % self.time_signature["count"]
             while note_count < self.time_signature["count"]:
-                duration = self._duration(note=(verse[len(verse)-1]["duration"] if len(verse)>0 else 1), type="markov")
+                duration = self._duration(note=(verse[len(verse)-1]["duration"] if len(verse)>0 else 1), type=duration_type)
                 volume = 100
                 note_count += duration
                 self.total_note_count += duration
@@ -391,15 +402,15 @@ class Generator:
                 verse.append(note)
         return verse
 
-    def _verse(self, type="random", offset=0, args={}):
+    def _verse(self, type="random", args={}):
         if type=="midpoint_displacement":
-            return _v_midpoint_displacement(offset, args)
+            return _v_midpoint_displacement(args)
         elif type=="pieceweise":
-            return _v_piecewise_notes(offset, args)
+            return _v_piecewise_notes(args)
         elif type=="measure":
-            return _v_by_measure(offset, args)
+            return _v_by_measure(args)
         generation_type = [getattr(self, '_v_midpoint_displacement'), getattr(self, '_v_piecewise_notes'), getattr(self, '_v_by_measure')]
-        return Util().random_choice(generation_type)(offset=offset, args=args)
+        return Util().random_choice(generation_type)(args=args)
 
     def melody(self, args={}):
         if "structure" in args:
@@ -407,7 +418,6 @@ class Generator:
         else:
             structure = Util().random_choice(["abcbdbebf", "abcba", "ababc", "abcbdbe", "abcde", "abba", "abbc"])
         log("Chosen structure: " + structure)
-        structure = "abcbdbebf" # One option for verse generation
         structure_components = list(set(structure))
         melody_components = {}
         melody = []
@@ -473,7 +483,7 @@ class Generator:
             return
         # Setting up a baseline for right now
         # Create a config for note lists
-        pattern = [0.35,0.15,0.35,0.15]#Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
+        pattern = Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
         total_duration = self.melody[-1]["time"] # + self.melody[-1]["duration"]
         while index < total_duration:
             for i in range(len(pattern)):
