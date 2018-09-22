@@ -1,9 +1,9 @@
 from midiutil import MIDIFile
-import sys, getopt, time, os, math, random, hashlib
+import sys, getopt, time, os, math, random, hashlib, json
 from types import *
 from bisect import bisect
 import numpy
-import copy
+import copy, yaml, argparse
 import __main__
 
 debug_log = False
@@ -62,12 +62,12 @@ class Util:
     }
 
     instrument_sets = [
-        {'melody':72,'harmony':56,'bass':61,'rhythm':112}
+        #{'melody':72,'harmony':56,'bass':61,'rhythm':112},
         {'melody':2,'harmony':2,'bass':49,'rhythm':118},
         {'melody':0,'harmony':0,'bass':0,'rhythm':118},
-        {'melody':71,'harmony':48,'bass':60,'rhythm':118},
-        {'melody':67,'harmony':75,'bass':105,'rhythm':53},
-        {'melody':80,'harmony':81,'bass':87,'rhythm':84}
+        #{'melody':71,'harmony':48,'bass':60,'rhythm':118},
+        #{'melody':67,'harmony':75,'bass':105,'rhythm':53},
+        #{'melody':80,'harmony':81,'bass':87,'rhythm':84}
     ]
 
     notes = {
@@ -191,9 +191,9 @@ class Generator:
     variance = 30 # Define a function to determine how likely a note is to take a step in either direction. SD is one note interval
     total_note_count = 0
 
-    def __init__(self):
+    def __init__(self, custom_args={}):
         log("Starting generation...")
-        self.config()
+        self.config(custom_args)
         log(" Building melody...")
         self.melody()
         log(" Melody complete.")
@@ -208,17 +208,27 @@ class Generator:
         log(" Rhythm complete.")
         log("Song generation complete.")
 
-    def config(self):
+    def config(self, custom_args={}):
         # Key signature, Time signature, Scale
-        # Key signatures should also have base note details, for distinction between 3/4 and 6/8
-        scale_key = Util().random_choice(list(Util().scales.keys()))
-        log("    Scale: " + scale_key)
+        if "tempo" in custom_args:
+            self.tempo = custom_args["tempo"]
+        else:
+            self.tempo = int(numpy.random.normal(120, 32))
+        if "scale" in custom_args and custom_args["scale"] in list(Util().scales.keys()):
+            scale_key = custom_args["scale"]
+        else:
+            scale_key = Util().random_choice(list(Util().scales.keys()))
+        self.base_note = random.randint(48, 84)
+        if "base_note" in custom_args:
+            for note in Util().notes:
+                if Util().notes[note]["name"] == custom_args["base_note"]:
+                    self.base_note = note
+                    break
         self.scale = Util().scales[scale_key]
-        self.base_note = random.randint(48,84) # Uniform distribution - should normalize?
-        log("    Base note: " + Util().notes[self.base_note]["name"])
         self.time_signature = {"count":Util().random_choice([3,4,5,6,8]),"unit":Util().random_choice([4,4,4,4,8,8])}
+        log("    Scale: " + scale_key)
         log("    Time signature: " + str(self.time_signature["count"]) + "/" + str(self.time_signature["unit"]))
-        self.tempo = int(numpy.random.normal(120, 32))
+        log("    Base note: " + Util().notes[self.base_note]["name"])
         log("    Tempo: " + str(self.tempo) + " bpm")
 
     def _d_weighted(self, previous, args):
@@ -478,7 +488,7 @@ class Generator:
     def rhythm(self):
         rhythm = []
         index = 0;
-        percussion_chance = 100 #75
+        percussion_chance = 75
         if random.randint(0,100) > percussion_chance:
             return
         # Setting up a baseline for right now
@@ -507,39 +517,49 @@ class Transcriber:
         song[key]["program"] = program_set[key]
     def __init__(self, file_name):
         self.file_name = file_name
-        self.song_generator = Generator()
-        self.generator = MIDIFile(1)
-        self.generate()
-        self.generator.addTempo(track=0,time=0, tempo=self.song_generator.tempo)
-        self.write_to_file()
 
     def _pad_song(self):
         hold_note = {"pitch":0,"time":self.song["melody"]["note_series"][-1]["time"]+1, "duration":2, "volume":0}
         self.song["melody"]["note_series"].append(hold_note)
 
-    def generate(self):
-        self.song["melody"]["note_series"] = self.song_generator.melody
-        self.song["harmony"]["note_series"] = self.song_generator.harmony
-        self.song["bass"]["note_series"] = self.song_generator.bass
-        self.song["rhythm"]["note_series"] = self.song_generator.rhythm
+    def compile(self, song_generator):
+        self.generator = MIDIFile(1)
+        self.generator.addTempo(track=0,time=0, tempo=song_generator.tempo)
+        self.song["melody"]["note_series"] = song_generator.melody
+        self.song["harmony"]["note_series"] = song_generator.harmony
+        self.song["bass"]["note_series"] = song_generator.bass
+        self.song["rhythm"]["note_series"] = song_generator.rhythm
         self._pad_song()
         for i in self.song:
             self.generator.addProgramChange(0, self.song[i]["channel"], 0, self.song[i]["program"])
             for note in self.song[i]["note_series"]:
                 self.generator.addNote(0, self.song[i]["channel"], note["pitch"], note["time"], note["duration"], note["volume"])
+        self.write_to_file()
 
-    #todo: Generate song base, channel-by-channel. Put all elements into generator, note-by-note (track channel pitch time duration volume),
     def write_to_file(self):
         with open(self.file_name, "wb") as output_file:
             self.generator.writeFile(output_file)
 
-#addNote(track, channel, pitch, time, duration, volume, annotation)
+def loadArgsFromFile(filename):
+    file = open(filename, "r")
+    data = file.read()
+    return yaml.load(data)
+
+# Load unique params here
+def loadCustomArgs(args):
+    custom_args = {}
+    print(args)
+    if "tempo" in args:
+        custom_args["tempo"] = args["tempo"]
+    print(custom_args)
+    return custom_args
 
 def main(argv):
     global verbose_log
     global debug_log
     opts, args = getopt.getopt(argv, 'vdhp:o:c:s:', ['verbose', 'debug', 'help', 'output=','config=','params=','seed='])
     song_name = time.strftime('song-%Y-%m-%d_%H%M%S.mid')
+    custom_args = {}
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             print('python '+__main__.__file__+' [--output=<outputfile>] [--help] [--config=<config_file>] [--params=<params>]')
@@ -551,19 +571,17 @@ def main(argv):
         elif opt in ("-o", "--output"):
             song_name = arg
         elif opt in ("-c", "--config"):
-            # Load the config file here
-            continue
+            custom_args = loadArgsFromFile(arg)
         elif opt in ("-p", "--params"):
-            # Load unique params here
             continue
         elif opt in ("-s", "--seed"):
-
             seed = int(hashlib.sha256(arg.encode('utf-8')).hexdigest(), 16) % (2**32 - 1)
             random.seed(seed)
             numpy.random.seed(seed)
-            continue
     log("Starting...")
+    generator = Generator(custom_args)
     transcriber = Transcriber(song_name)
+    transcriber.compile(generator)
     log("Complete. Song stored in " + song_name)
 
 if __name__ == "__main__":
