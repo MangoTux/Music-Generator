@@ -3,7 +3,7 @@ import sys, getopt, time, os, math, random, hashlib, json
 from types import *
 from bisect import bisect
 import numpy
-import copy, yaml, argparse
+import copy, yaml, argparse, collections
 import __main__
 
 debug_log = False
@@ -64,12 +64,14 @@ class Util:
     instrument_sets = [
         #{'melody':72,'harmony':56,'bass':61,'rhythm':112}, # Clarinet/Trumpet/Brass Section/Tinkle Bell
         {'melody':2,'harmony':2,'bass':49,'rhythm':118}, # Electric Piano/Electric Piano/String Ensemble 2/Synth Drum
-        {'melody':0,'harmony':0,'bass':0,'rhythm':118}, # Grand Piano/Grand Piano/Grand Piano/Synth Drum
+        #{'melody':0,'harmony':0,'bass':0,'rhythm':118}, # Grand Piano/Grand Piano/Grand Piano/Synth Drum
         #{'melody':71,'harmony':48,'bass':60,'rhythm':118}, # Clarinet/String Ensemble 1/French Horn/Synth Drum
         #{'melody':67,'harmony':75,'bass':105,'rhythm':53}, # Baritone Sax/Pan Flute/Banjo/Voice Oohs
         #{'melody':80,'harmony':81,'bass':87,'rhythm':84} # Lead 1 (square)/Lead 1 (Square)/Lead 8 (Bass + Lead)/Lead 5 (Charang)
-        {'melody':80,'harmony':80,'bass':81,'rhythm':85}, # Square/Square/Sawtooth/Voice
-        {'melody':105,'harmony':22,'bass':32,'rhythm':117}, # Banjo/Harmonica/Acoustic Bass/Melodic Tom
+        #{'melody':80,'harmony':80,'bass':81,'rhythm':85}, # Square/Square/Sawtooth/Voice
+        #{'melody':105,'harmony':22,'bass':32,'rhythm':117}, # Banjo/Harmonica/Acoustic Bass/Melodic Tom
+        #{'melody':12,'harmony':76,'bass':68,'rhythm':115}, # Marimba/Blown Bottle/Kalimba/Woodblock
+        #{'melody':13,'harmony':14,'bass':15,'rhythm':10},
     ]
 
     notes = {
@@ -188,10 +190,10 @@ class Util:
         return values[i]
 
 class Generator:
+    events = []
     song = []
     rest_threshold = 15
-    variance = 30 # Define a function to determine how likely a note is to take a step in either direction. SD is one note interval
-    total_note_count = 0
+    metadata = {}
 
     def __init__(self, custom_args={}):
         log("Starting generation...")
@@ -211,6 +213,7 @@ class Generator:
         log(" Performing post-processing...")
         self.postprocess()
         log(" Post-processing complete.")
+        self.finalize()
         log("Song generation complete.")
 
     def config(self, custom_args={}):
@@ -272,7 +275,6 @@ class Generator:
 
     # Currently returns the step interval for the new note.
     def _nm_normal_skew(self, note, args):
-        # Given a note and current scale index, use the defined variance parameter to
         if "cutoffs" in args:
             cutoffs = args["cutoffs"]
         else:
@@ -401,7 +403,7 @@ class Generator:
         measure_length = random.randint(3,10)
         # Develop each measure note-by-note
         note_count = 0
-        self.total_note_count = 0
+        total_note_count = 0
         index = 0 # base note
         for measure in range(measure_length):
             note_count = note_count % self.time_signature["count"]
@@ -409,14 +411,14 @@ class Generator:
                 duration = self._duration(note=(verse[len(verse)-1]["duration"] if len(verse)>0 else 1), type=duration_type)
                 volume = 100
                 note_count += duration
-                self.total_note_count += duration
+                total_note_count += duration
                 # Apply a rest if random int is less than the threshold
                 if random.randint(0,100) < self.rest_threshold:
                     continue
                 index += int(self._note_mutation(note_value))
                 note_value = min(max(12 * int(index / len(self.scale)) + self.scale[index % len(self.scale)] + self.base_note, 1), 126)
                 note = { # Time is established here, but the real value is used later.
-                    "pitch":note_value, "time":self.total_note_count, "duration": duration, "volume":100, "index": index
+                    "pitch":note_value, "time":total_note_count, "duration": duration, "volume":100, "index": index
                 }
                 verse.append(note)
         return verse
@@ -436,10 +438,12 @@ class Generator:
             type=args["melody_note"]
         else:
             type="random"
-        if "structure" in args:
+        if "melody_structure" in args:
             structure = args["structure"]
         else:
             structure = Util().random_choice(["abcbdbebf", "abcba", "ababc", "abcbdbe", "abcde", "abba", "abbc"])
+        self.metadata["melody_structure"] = structure
+        self.metadata["melody"] = []
         log("  Chosen structure: " + structure)
         structure_components = list(set(structure))
         melody_components = {}
@@ -451,12 +455,12 @@ class Generator:
         for x in structure:
             # Take melody_components[x]'s list and
             current_theme = copy.deepcopy(melody_components[x]["verse"])
+            self.metadata["melody"].append({'component': x, 'start': offset})
             for note in range(len(current_theme)):
                 current_theme[note]["time"] += offset
                 melody.append(current_theme[note])
             offset += melody_components[x]["duration"]
         self.melody = melody
-
 
     # Pick a random time interval, recording the note at the beginning and end (Fine-tune to start and stop when melody does?)
     # Based on selected chord system, compile list of notes that appear in both notes' chord lists
@@ -513,7 +517,7 @@ class Generator:
                 harmony.append(harmony_note)
         return harmony
 
-    def harmony(self, type="bridge", args={}):
+    def harmony(self, type="random", args={}):
         if type=="discrete_chord":
             harmony = self._h_discrete_chord(args)
         elif type=="bridge":
@@ -542,13 +546,13 @@ class Generator:
             bass.append(note)
         self.bass = bass
 
-    def rhythm(self):
+    def _r_atonal(self, args):
         rhythm = []
         index = 0;
         percussion_chance = 75
         if random.randint(0,100) > percussion_chance:
             self.rhythm = rhythm
-            return
+            return rhythm
         # Setting up a baseline for right now
         # Create a config for note lists
         pattern = Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
@@ -562,38 +566,87 @@ class Generator:
                     volume += 20
                 rhythm.append({"pitch":38,"time":index,"duration":0.05,"volume":volume})
                 index += pattern[i]
-        # todo figure out. Base idea: a number of default rhythms that are optionally applied
-        self.rhythm = rhythm
+        return rhythm;
+
+    def _r_tonal(self, args):
+        pass
+
+    def rhythm(self, type="atonal", args={}):
+        if type == "atonal":
+            self.rhythm = self._r_atonal(args)
+        elif type == "tonal":
+            self.rhythm = self._r_tonal(args)
+        else:
+            generation_type = [getattr(self, '_r_atonal'), getattr(self, '_r_tonal')]
+            self.rhythm = Util().random_choice(generation_type)(args=args)
+
+    def _pp_keychange(self, on_verse):
+        keychange_threshold = 25
+        if on_verse[1] < 3 or random.randint(0, 100) > keychange_threshold:
+            return
+        log("Applying keychange to song on final " + on_verse[0])
+        timestamp_start = 0;
+        # Todo get suitable candidate for key change
+        # Get note delta from base note
+        # Do I go for a straight note change, or recalculate based on supplied index and change the scale?
+        # Base implementation: Apply a flat note delta
+        note_delta = 4 # Improve a third
+        # Advanced:
+        """
+        Decide a new key (and scale?), and figure out an optimal bridge from old => new
+        Use an index_delta value and recalculate notes based on new_base_note, index, and index_delta
+        """
+
+        for i in self.metadata["melody"][::-1]:
+            if i["component"] == on_verse[0]:
+                timestamp_start = i["start"]
+                break
+        for i in self.melody:
+            if i["time"] > timestamp_start:
+                i["pitch"] += note_delta
+        for i in self.harmony:
+            if i["time"] > timestamp_start:
+                i["pitch"] += note_delta
+        for i in self.bass:
+            if i["time"] > timestamp_start:
+                i["pitch"] += note_delta
 
     # Handle any post-processing, such as optionally fading out at the end of the song, adding a padding so song doesn't cut out, etc
     def postprocess(self):
-        hold_note = {"pitch":0,"time":self.melody[-1]["time"]+1, "duration":2, "volume":0}
+        hold_note = {"pitch":0,"time":self.melody[-1]["time"]+1, "duration":4, "volume":0}
         self.melody.append(hold_note)
+        # Keychange handler
+        self._pp_keychange(collections.Counter(self.metadata["melody_structure"]).most_common(1)[0])
+        # Idea: If a melody note has a long duration and a harmony follows it, Change the harmony hold to a roll.
+
+    def finalize(self):
+        song = {"melody": { "channel": 0, "note_series": [], "program": 0},
+                "harmony": { "channel": 1, "note_series": [], "program": 0},
+                "bass": { "channel": 2, "note_series": [], "program": 0},
+                "rhythm": { "channel": 10, "note_series": [], "program": 0}}
+        program_set = Util().random_choice(Util().instrument_sets)
+        for key in program_set:
+            song[key]["program"] = program_set[key]
+        song["melody"]["note_series"] = self.melody
+        song["harmony"]["note_series"] = self.harmony
+        song["bass"]["note_series"] = self.bass
+        song["rhythm"]["note_series"] = self.rhythm
+        self.song = song
 
 class Transcriber:
     # https://soundprogramming.net/file-formats/general-midi-instrument-list/
     # 1 track, each index is a channel
-    song = {"melody": { "channel": 0, "note_series": [], "program": 0},
-                "harmony": { "channel": 1, "note_series": [], "program": 0},
-                "bass": { "channel": 2, "note_series": [], "program": 0},
-                "rhythm": { "channel": 10, "note_series": [], "program": 0}}
-    program_set = Util().random_choice(Util().instrument_sets)
-    for key in program_set:
-        song[key]["program"] = program_set[key]
+
+
     def __init__(self, file_name):
         self.file_name = file_name
 
     def compile(self, song_generator):
         self.generator = MIDIFile(1)
-        self.generator.addTempo(track=0,time=0, tempo=song_generator.tempo)
-        self.song["melody"]["note_series"] = song_generator.melody
-        self.song["harmony"]["note_series"] = song_generator.harmony
-        self.song["bass"]["note_series"] = song_generator.bass
-        self.song["rhythm"]["note_series"] = song_generator.rhythm
-        for i in self.song:
-            self.generator.addProgramChange(0, self.song[i]["channel"], 0, self.song[i]["program"])
-            for note in self.song[i]["note_series"]:
-                self.generator.addNote(0, self.song[i]["channel"], note["pitch"], note["time"], note["duration"], note["volume"])
+        for i in song_generator.song:
+            self.generator.addProgramChange(0, song_generator.song[i]["channel"], 0, song_generator.song[i]["program"])
+            for note in song_generator.song[i]["note_series"]:
+                self.generator.addNote(0, song_generator.song[i]["channel"], note["pitch"], note["time"], note["duration"], note["volume"])
         self.write_to_file()
 
     def write_to_file(self):
