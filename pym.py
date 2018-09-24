@@ -64,7 +64,7 @@ class Util:
     instrument_sets = [
         #{'melody':72,'harmony':56,'bass':61,'rhythm':112}, # Clarinet/Trumpet/Brass Section/Tinkle Bell
         {'melody':2,'harmony':2,'bass':49,'rhythm':118}, # Electric Piano/Electric Piano/String Ensemble 2/Synth Drum
-        #{'melody':0,'harmony':0,'bass':0,'rhythm':118}, # Grand Piano/Grand Piano/Grand Piano/Synth Drum
+        {'melody':0,'harmony':0,'bass':0,'rhythm':118}, # Grand Piano/Grand Piano/Grand Piano/Synth Drum
         #{'melody':71,'harmony':48,'bass':60,'rhythm':118}, # Clarinet/String Ensemble 1/French Horn/Synth Drum
         #{'melody':67,'harmony':75,'bass':105,'rhythm':53}, # Baritone Sax/Pan Flute/Banjo/Voice Oohs
         #{'melody':80,'harmony':81,'bass':87,'rhythm':84} # Lead 1 (square)/Lead 1 (Square)/Lead 8 (Bass + Lead)/Lead 5 (Charang)
@@ -72,6 +72,7 @@ class Util:
         #{'melody':105,'harmony':22,'bass':32,'rhythm':117}, # Banjo/Harmonica/Acoustic Bass/Melodic Tom
         #{'melody':12,'harmony':76,'bass':68,'rhythm':115}, # Marimba/Blown Bottle/Kalimba/Woodblock
         #{'melody':13,'harmony':14,'bass':15,'rhythm':10},
+        #{'melody':3,'harmony':3,'bass':3,'rhythm':113}
     ]
 
     notes = {
@@ -195,20 +196,24 @@ class Generator:
     rest_threshold = 15
     metadata = {}
 
-    def __init__(self, custom_args={}):
+    def __init__(self, args={}):
+        melody_type = "random"
+        harmony_type = "random"
+        bass_type = "random"
+        rhythm_type = "random"
         log("Starting generation...")
-        self.config(custom_args)
+        self.config(args=args)
         log(" Building melody...")
-        self.melody()
+        self.melody(args=args)
         log(" Melody complete.")
         log(" Generating bass line...")
-        self.bass()
+        self.bass(args=args)
         log(" Bass line complete.")
         log(" Generating harmony...")
-        self.harmony()
+        self.harmony(args=args)
         log(" Harmony complete.")
         log(" Generating rhythm...")
-        self.rhythm()
+        self.rhythm(args=args)
         log(" Rhythm complete.")
         log(" Performing post-processing...")
         self.postprocess()
@@ -216,20 +221,20 @@ class Generator:
         self.finalize()
         log("Song generation complete.")
 
-    def config(self, custom_args={}):
+    def config(self, args={}):
         # Key signature, Time signature, Scale
-        if "tempo" in custom_args:
-            self.tempo = custom_args["tempo"]
+        if "tempo" in args:
+            self.tempo = args["tempo"]
         else:
             self.tempo = int(numpy.random.normal(120, 32))
-        if "scale" in custom_args and custom_args["scale"] in list(Util().scales.keys()):
-            scale_key = custom_args["scale"]
+        if "scale" in args and args["scale"] in list(Util().scales.keys()):
+            scale_key = args["scale"]
         else:
             scale_key = Util().random_choice(list(Util().scales.keys()))
         self.base_note = random.randint(48, 84)
-        if "base_note" in custom_args:
+        if "base_note" in args:
             for note in Util().notes:
-                if Util().notes[note]["name"] == custom_args["base_note"]:
+                if Util().notes[note]["name"] == args["base_note"]:
                     self.base_note = note
                     break
         self.scale = Util().scales[scale_key]
@@ -249,16 +254,37 @@ class Generator:
     def _d_uniform(self, previous, args):
         return Util().random_choice([0.5, 1, 2, 3, 4])
 
+    # Mostly markov except for a chance to start a new duration sequence
+    def _d_semimarkov(self, previous, args):
+        if "probability" in args:
+            probability = args["probability"]
+        else:
+            probability = {
+                0.5:[(0.5, 0.5), (1, 0.25), (1.5, .15), (2, 0.1), (3, 0), (4, 0)],
+                1:[(0.5, 0.25), (1, 0.35), (1.5, .1), (2, 0.2), (3, 0.06), (4, 0.04)],
+                1.5:[(0.5, .5), (1, .1), (1.5, .3), (2, .1), (3, 0), (4, 0)],
+                2:[(0.5, 0.1), (1, 0.2), (1.5, .1), (2, 0.4), (3, 0.1), (4, 0.1)],
+                3:[(0.5, 0.01), (1, 0.2), (1.5, 0.05), (2, 0.14), (3, 0.4), (4, 0.1)],
+                4:[(0.5, 0.01), (1, 0.09), (1.5, 0), (2, 0.5), (3, 0.2), (4, 0.2)]
+            }
+        new_notes = [0.5, 1, 1.5, 2, 3, 4]
+        new_threshold = 2
+        if (random.randint(0,100) < new_threshold):
+            return Util().random_choice(new_notes)
+        else:
+            return Util().weighted_choice(probability[previous])
+
     def _d_markov(self, previous, args):
         if "probability" in args:
             probability = args["probability"]
         else:
             probability = {
-                0.5:[(0.5, 0.5), (1, 0.35), (2, 0.15), (3, 0), (4, 0)],
-                1:[(0.5, 0.25), (1, 0.4), (2, 0.25), (3, 0.06), (4, 0.04)],
-                2:[(0.5, 0.1), (1, 0.3), (2, 0.4), (3, 0.1), (4, 0.1)],
-                3:[(0.5, 0.01), (1, 0.2), (2, 0.19), (3, 0.4), (4, 0.1)],
-                4:[(0.5, 0.01), (1, 0.09), (2, 0.5), (3, 0.2), (4, 0.2)]
+                0.5:[(0.5, 0.5), (1, 0.25), (1.5, .15), (2, 0.1), (3, 0), (4, 0)],
+                1:[(0.5, 0.25), (1, 0.35), (1.5, .1), (2, 0.2), (3, 0.06), (4, 0.04)],
+                1.5:[(0.5, .5), (1, .1), (1.5, .3), (2, .1), (3, 0), (4, 0)],
+                2:[(0.5, 0.1), (1, 0.2), (1.5, .1), (2, 0.4), (3, 0.1), (4, 0.1)],
+                3:[(0.5, 0.01), (1, 0.2), (1.5, 0.05), (2, 0.14), (3, 0.4), (4, 0.1)],
+                4:[(0.5, 0.01), (1, 0.09), (1.5, 0), (2, 0.5), (3, 0.2), (4, 0.2)]
             }
         return Util().weighted_choice(probability[previous])
 
@@ -269,7 +295,9 @@ class Generator:
             return self._d_uniform(note, args)
         elif type=="markov":
             return self._d_markov(note, args)
-        generation_type = Util().random_choice([getattr(self, '_d_weighted'), getattr(self, '_d_uniform'), getattr(self, '_d_markov')])
+        elif type=="semimarkov":
+            return self._d_semimarkov(note, args)
+        generation_type = Util().random_choice([getattr(self, '_d_weighted'), getattr(self, '_d_uniform'), getattr(self, '_d_markov'), getattr(self, '_d_semimarkov')])
 
         return generation_type(note, args)
 
@@ -379,7 +407,7 @@ class Generator:
                 "pitch":note_value, "time":time, "duration":base_duration, "volume":100, "index":note_index
             }
             verse.append(note)
-            note_index += int(self._note_mutation(note_value, type="normal_skew", args={"cutoffs":{1: 0, 1.5: 1, 1.9: 2, 2.3: 3, 2.7: 4, 3: 5}}))
+            note_index += int(self._note_mutation(note_value, type="random", args={"cutoffs":{1: 0, 1.5: 1, 1.9: 2, 2.3: 3, 2.7: 4, 3: 5}}))
         # Link together similar notes
         for i in range(len(verse)-1):
             join_threshold = base_join_threshold + (0 if int(verse[i]["time"]) == verse[i]["time"] else 15)
@@ -425,21 +453,21 @@ class Generator:
 
     def _verse(self, type="random", args={}):
         if type=="midpoint_displacement":
-            return _v_midpoint_displacement(args)
-        elif type=="pieceweise":
-            return _v_piecewise_notes(args)
+            return self._v_midpoint_displacement(args)
+        elif type=="piecewise":
+            return self._v_piecewise_notes(args)
         elif type=="measure":
-            return _v_by_measure(args)
+            return self._v_by_measure(args)
         generation_type = [getattr(self, '_v_midpoint_displacement'), getattr(self, '_v_piecewise_notes'), getattr(self, '_v_by_measure')]
         return Util().random_choice(generation_type)(args=args)
 
     def melody(self, args={}):
-        if "melody_note" in args:
-            type=args["melody_note"]
+        if "melody_type" in args:
+            type=args["melody_type"]
         else:
             type="random"
         if "melody_structure" in args:
-            structure = args["structure"]
+            structure = args["melody_structure"]
         else:
             structure = Util().random_choice(["abcbdbebf", "abcba", "ababc", "abcbdbe", "abcde", "abba", "abbc"])
         self.metadata["melody_structure"] = structure
@@ -461,6 +489,56 @@ class Generator:
                 melody.append(current_theme[note])
             offset += melody_components[x]["duration"]
         self.melody = melody
+
+    def _h_multibridge(self, args={}):
+        log("  Harmony: Multi Bridge")
+        harmony = []
+        time = 0
+        max_time = self.melody[-1]["time"] + self.melody[-1]["duration"]
+        melody_index = 0
+        harmony_index = 0
+        valid_intervals = []
+        chord_choice = Util().random_choice(list(Util().chord_systems.keys()))
+        candidate_removal_threshold = 80
+        for chord in Util().chord_systems[chord_choice]:
+            valid_intervals = set(list(valid_intervals) + Util().chords[chord])
+        while time < max_time:
+            candidate_notes = []
+            note_duration = Util().random_choice([2,3,4,5,6,7,8])
+            harmony_index += 1
+            start_note = self.melody[melody_index]["pitch"]
+            while melody_index < len(self.melody)-1:
+                if time+note_duration < self.melody[melody_index]["time"]+self.melody[melody_index]["duration"]:
+                    break
+                melody_index += 1
+            end_note = self.melody[melody_index]["pitch"]
+            available_start = [start_note + i for i in valid_intervals]
+            available_end = [end_note + i for i in valid_intervals]
+            for i in available_start:
+                if i in available_end:
+                    candidate_notes.append(i)
+            if len(candidate_notes) > 0:
+                harmony.append({"pitch":candidate_notes[0],"time":time,"duration":note_duration,"volume":90})
+            secondary_candidate_notes = []
+            index = 1
+            while index < len(candidate_notes):
+                if candidate_notes[index] - candidate_notes[0] > 4: # For right now, using this as a basis of "good" notes
+                    secondary_candidate_notes.append(candidate_notes[index])
+                index+=1
+            num_additions = random.randint(0, len(secondary_candidate_notes))
+            elapsed_duration = time
+            for i in range(num_additions):
+                secondary_duration = max(min(Util().random_choice(range(2, note_duration+1)), note_duration - elapsed_duration), 0)
+                secondary_pitch = Util().random_choice(secondary_candidate_notes)
+                if secondary_duration <= 0:
+                    break
+                harmony.append({"pitch":secondary_pitch, "time": elapsed_duration, "duration": secondary_duration, "volume": 75})
+                elapsed_duration += secondary_duration
+                if random.randint(0, 100) < candidate_removal_threshold:
+                    secondary_candidate_notes.remove(secondary_pitch)
+            time += note_duration
+            debug(harmony)
+        return harmony
 
     # Pick a random time interval, recording the note at the beginning and end (Fine-tune to start and stop when melody does?)
     # Based on selected chord system, compile list of notes that appear in both notes' chord lists
@@ -491,6 +569,8 @@ class Generator:
             for i in available_start:
                 if i in available_end:
                     candidate_notes.append(i)
+            debug(str(start_note) + " " + str(end_note))
+            debug(candidate_notes)
             if len(candidate_notes) > 0:
                 harmony.append({"pitch":Util().random_choice(candidate_notes),"time":time,"duration":note_duration,"volume":90})
             time += note_duration
@@ -505,7 +585,6 @@ class Generator:
         melody_index = 0
         melody_duration = 0
         basis = self.melody
-        chord_hold_length = Util().weighted_choice([(0, 0.5), (0.5, 0.3), (1, .15), (1.5, 0.05)])
         chord_selection = Util().random_choice(list(Util().chord_systems.keys()))
         chord_options = Util().chord_systems[chord_selection]
         for note in basis:
@@ -513,27 +592,34 @@ class Generator:
                 continue;
             chord = Util().chords[Util().random_choice(chord_options)]
             for idx in chord:
-                harmony_note = {"pitch":note["pitch"] + idx, "time": note["time"], "duration":note["duration"] + chord_hold_length, "volume": int(100 - idx*2)}
+                harmony_note = {"pitch":note["pitch"] + idx, "time": note["time"], "duration":note["duration"] , "volume": int(100 - idx*2)}
                 harmony.append(harmony_note)
         return harmony
 
-    def harmony(self, type="random", args={}):
+    def harmony(self, args={}):
+        type="random"
+        if "harmony_type" in args:
+            type = args["harmony_type"]
         if type=="discrete_chord":
             harmony = self._h_discrete_chord(args)
         elif type=="bridge":
             harmony = self._h_bridge(args)
+        elif type=="multibridge":
+            harmony = self._h_multibridge(args)
         else:
-            generation_type = [getattr(self, '_h_discrete_chord'), getattr(self, '_h_bridge')]
+            generation_type = [getattr(self, '_h_discrete_chord'), getattr(self, '_h_bridge'), getattr(self, '_h_multibridge')]
             harmony = Util().random_choice(generation_type)(args=args)
         self.harmony = harmony
 
-    def bass(self):
+    def bass(self, args={}):
         bass = []
         index = 0
         melody_index = 0
         melody_duration = 0
         aggression = Util().weighted_choice([(4.0, 0.05), (2.0, .35), (1.0, .59), (0.5, .01)])
         pitch_drop = Util().random_choice([12, 24])
+        if self.base_note < 55:
+            pitch_drop += 12
         while index < self.melody[-1]["time"]:
             note = {
                 "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":self.time_signature["count"], "volume":75, "index":self.melody[melody_index]["index"]
@@ -542,17 +628,13 @@ class Generator:
             index += self.time_signature["count"]/aggression
             while melody_index < len(self.melody) and self.melody[melody_index]["time"] < index:
                 melody_index += 1
-
             bass.append(note)
         self.bass = bass
 
     def _r_atonal(self, args):
+        log("  Atonal Rhythm")
         rhythm = []
         index = 0;
-        percussion_chance = 75
-        if random.randint(0,100) > percussion_chance:
-            self.rhythm = rhythm
-            return rhythm
         # Setting up a baseline for right now
         # Create a config for note lists
         pattern = Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
@@ -569,9 +651,41 @@ class Generator:
         return rhythm;
 
     def _r_tonal(self, args):
-        pass
+        log("  Tonal Rhythm")
+        rhythm = []
+        index = 0;
+        # Setting up a baseline for right now
+        # Create a config for note lists
+        pattern = Util().random_choice([[0.5,0.5,0.5,0.5], [1, 1, 1, 1], [1.6,0.4,1.6,0.4],[1.34,1.33,1.33]])
+        total_duration = self.melody[-1]["time"] # + self.melody[-1]["duration"]
+        while index < total_duration:
+            for i in range(len(pattern)):
+                volume = 60
+                if i%4 == 0:
+                    volume += 20
+                if i%2 == 0:
+                    volume += 20
+                rhythm.append({"pitch":38,"time":index,"duration":0.05,"volume":volume})
+                if i%4 == 0:
+                    rhythm.append({"pitch":36,"time":index,"duration":0.05,"volume":volume})
+                elif i%4 == 1:
+                    rhythm.append({"pitch":42,"time":index,"duration":0.05,"volume":volume})
+                elif i%4 == 2:
+                    rhythm.append({"pitch":37,"time":index,"duration":0.05,"volume":volume})
+                elif i%4 == 3:
+                    rhythm.append({"pitch":44,"time":index,"duration":0.05,"volume":volume})
+                index += pattern[i]
+        return rhythm;
 
-    def rhythm(self, type="atonal", args={}):
+    def rhythm(self, args={}):
+        percussion_chance = 75
+        type="random"
+        if "rhythm_type" in args:
+            type = args["rhythm_type"]
+            percussion_chance = 100
+        if random.randint(0,100) > percussion_chance:
+            self.rhythm = []
+            return
         if type == "atonal":
             self.rhythm = self._r_atonal(args)
         elif type == "tonal":
@@ -611,19 +725,68 @@ class Generator:
             if i["time"] > timestamp_start:
                 i["pitch"] += note_delta
 
+    def _pp_dynamics(self, verse_frequency):
+        pass
+
+    def _pp_tempo(self, verse_frequency):
+        self.events.append({"type":"tempo","time":0,"value":self.tempo})
+        tempochange_threshold = 50
+        temposlow_threshold = 20
+        if verse_frequency[0][1] > 1 and random.randint(0, 100) < tempochange_threshold:
+            log("  Applying tempo change to song on final " + verse_frequency[0][0])
+            for i in self.metadata["melody"][::-1]:
+                if i["component"] == verse_frequency[0][0]:
+                    self.events.append({"type":"tempo","time":i["start"],"value":numpy.random.normal(10, 10)+self.tempo})
+                    break
+        if random.randint(0, 100) < temposlow_threshold:
+            log("  Applying slowdown on final part of song")
+            new_tempo = int(self.tempo / 2)
+            step_increment = int(new_tempo / (self.time_signature["count"]*2))
+            for i in self.melody[::-1]:
+                if new_tempo >= self.tempo:
+                    break
+                self.events.append({"type":"tempo","time":i["time"],"value":new_tempo})
+                new_tempo = new_tempo + step_increment
+
+    def _pp_melodyvoice(self, verse_frequency):
+        newvoice_threshold=45
+        if random.randint(0, 100) > newvoice_threshold:
+            return
+        log("  Doubling melody voice on a verse")
+        selected_verse = verse_frequency[0][0]
+        acceptable_deltas = []
+        if self.base_note > 60:
+            acceptable_deltas.append(-12)
+        if self.base_note < 75:
+            acceptable_deltas.append(12)
+        delta = Util().random_choice(acceptable_deltas)
+        for i in range(len(self.metadata["melody"])-1):
+            if self.metadata["melody"][i]["component"] == selected_verse:
+                start_time = self.metadata["melody"][i]["start"]
+                end_time = self.metadata["melody"][i+1]["start"]
+        for i in self.melody:
+            if i["time"] >= end_time:
+                break
+            if i["time"] >= start_time and i["time"] <= end_time:
+                self.melody.append({"pitch":i["pitch"]+delta,"duration":i["duration"],"time":i["time"],"index":i["index"],"volume":i["volume"]-15})
+
     # Handle any post-processing, such as optionally fading out at the end of the song, adding a padding so song doesn't cut out, etc
     def postprocess(self):
         hold_note = {"pitch":0,"time":self.melody[-1]["time"]+1, "duration":4, "volume":0}
         self.melody.append(hold_note)
         # Keychange handler
-        self._pp_keychange(collections.Counter(self.metadata["melody_structure"]).most_common(1)[0])
+        verse_frequency = collections.Counter(self.metadata["melody_structure"]).most_common()
+        self._pp_keychange(verse_frequency[0])
         # Idea: If a melody note has a long duration and a harmony follows it, Change the harmony hold to a roll.
+        self._pp_dynamics(verse_frequency)
+        self._pp_tempo(verse_frequency)
+        self._pp_melodyvoice(verse_frequency)
 
     def finalize(self):
         song = {"melody": { "channel": 0, "note_series": [], "program": 0},
                 "harmony": { "channel": 1, "note_series": [], "program": 0},
                 "bass": { "channel": 2, "note_series": [], "program": 0},
-                "rhythm": { "channel": 10, "note_series": [], "program": 0}}
+                "rhythm": { "channel": 9, "note_series": [], "program": 0}}
         program_set = Util().random_choice(Util().instrument_sets)
         for key in program_set:
             song[key]["program"] = program_set[key]
@@ -636,8 +799,6 @@ class Generator:
 class Transcriber:
     # https://soundprogramming.net/file-formats/general-midi-instrument-list/
     # 1 track, each index is a channel
-
-
     def __init__(self, file_name):
         self.file_name = file_name
 
@@ -647,6 +808,9 @@ class Transcriber:
             self.generator.addProgramChange(0, song_generator.song[i]["channel"], 0, song_generator.song[i]["program"])
             for note in song_generator.song[i]["note_series"]:
                 self.generator.addNote(0, song_generator.song[i]["channel"], note["pitch"], note["time"], note["duration"], note["volume"])
+        for i in song_generator.events:
+            if i["type"] == "tempo":
+                self.generator.addTempo(0, i["time"], i["value"])
         self.write_to_file()
 
     def write_to_file(self):
