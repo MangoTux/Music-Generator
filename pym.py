@@ -53,12 +53,17 @@ class Util:
 
     chord_systems = {
         'major': ['major', 'major7th', 'major9th', 'major6th', 'major7th9th', 'major7th11th', 'subdominant2ndInv'],
-        'minor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'three': ['major', 'minor', 'relMinor1stInv', 'subdominant2ndInv', 'major6th', 'minor6th'],
-        'four': ['major7th', 'minor7th', 'major9th', 'minor9th'],
-        'five': ['major7th9th', 'minor7th9th', 'major7th11th', 'minor7th11th'],
-        'nice': ['major', 'minor', 'relMinor1stInv', 'subdominant2ndInv', 'minor7th', 'major6th', 'minor6th', 'minor7th11th'],
-        'all': list(chords.keys())
+        'harmonicMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'minorPentatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'naturalMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'melodicMinorUp': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'melodicMinorDown': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'dorian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'mixolydian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'ahavaRaba': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'majorPentatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'diatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'phrygian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
     }
 
     instrument_sets = [
@@ -499,6 +504,7 @@ class Generator:
         harmony_index = 0
         valid_intervals = []
         chord_choice = Util().random_choice(list(Util().chord_systems.keys()))
+        debug("Chord Choice: " + chord_choice)
         candidate_removal_threshold = 80
         for chord in Util().chord_systems[chord_choice]:
             valid_intervals = set(list(valid_intervals) + Util().chords[chord])
