@@ -569,8 +569,6 @@ class Generator:
             for i in available_start:
                 if i in available_end:
                     candidate_notes.append(i)
-            debug(str(start_note) + " " + str(end_note))
-            debug(candidate_notes)
             if len(candidate_notes) > 0:
                 harmony.append({"pitch":Util().random_choice(candidate_notes),"time":time,"duration":note_duration,"volume":90})
             time += note_duration
@@ -611,11 +609,11 @@ class Generator:
             harmony = Util().random_choice(generation_type)(args=args)
         self.harmony = harmony
 
-    def bass(self, args={}):
+    def _b_pulse(self, args={}):
+        log("  Bass: Pulse")
         bass = []
         index = 0
         melody_index = 0
-        melody_duration = 0
         aggression = Util().weighted_choice([(4.0, 0.05), (2.0, .35), (1.0, .59), (0.5, .01)])
         pitch_drop = Util().random_choice([12, 24])
         if self.base_note < 55:
@@ -624,11 +622,63 @@ class Generator:
             note = {
                 "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":self.time_signature["count"], "volume":75, "index":self.melody[melody_index]["index"]
             }
-
             index += self.time_signature["count"]/aggression
             while melody_index < len(self.melody) and self.melody[melody_index]["time"] < index:
                 melody_index += 1
             bass.append(note)
+        return bass
+
+    def _b_slide(self, args={}):
+        log("  Bass: Slide")
+        bass = []
+        index = 0
+        melody_index = 0
+        next_melody_index = 0
+        slide_duration = Util().random_choice([0.5, 1])
+        pitch_drop = Util().random_choice([12, 24])
+        note_duration = self.time_signature["count"] / Util().random_choice([1, 2])
+        should_break = False
+        if self.base_note < 55:
+            pitch_drop += 12
+        while index < self.melody[-1]["time"] and melody_index < len(self.melody):
+            while next_melody_index < len(self.melody) and self.melody[next_melody_index]["time"] < index:
+                next_melody_index += 1
+            current_melody = {"pitch": self.melody[melody_index]["pitch"], "index": self.melody[melody_index]["index"]}
+            next_melody = {"pitch": self.melody[next_melody_index]["pitch"], "index": self.melody[next_melody_index]["index"]}
+            next_melody_index = self.melody[next_melody_index]["pitch"]
+            hold_note = {
+                "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":note_duration - slide_duration, "volume":75, "index":self.melody[melody_index]["index"]
+            }
+            index += note_duration
+            if index < self.melody[-1]["time"]:
+                hold_note["duration"] += slide_duration
+                should_break = True
+            bass.append(hold_note)
+            if should_break:
+                break
+            slide_note = {
+                "time": index + hold_note["duration"], "duration": slide_duration, "volume": 100, "pitch": 0, "index": 0
+            }
+            slide_index = next_melody["index"] - 1
+            if current_melody["pitch"] > next_melody["pitch"]:
+                slide_index = next_melody["index"] + 1
+            slide_note["index"] = slide_index
+            slide_note["pitch"] = min(max(12 * int(slide_index / len(self.scale)) + self.scale[slide_index % len(self.scale)] + self.base_note - pitch_drop, 1), 126)
+            bass.append(slide_note)
+            melody_index = next_melody_index
+        return bass
+
+    def bass(self, args={}):
+        type="random"
+        if "bass_type" in args:
+            type = args["bass_type"]
+        if type=="slide":
+            bass = self._b_slide(args)
+        elif type=="pulse":
+            bass = self._b_pulse(args)
+        else:
+            generation_type = [getattr(self, '_b_slide'), getattr(self, '_b_pulse')]
+            bass = Util().random_choice(generation_type)(args=args)
         self.bass = bass
 
     def _r_atonal(self, args):
