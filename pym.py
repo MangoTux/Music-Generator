@@ -19,7 +19,7 @@ def debug(event):
 
 class Util:
     scales = {
-      'chromatic': [0,1,2,3,4,5,6,7,8,9,10,11],
+      #'chromatic': [0,1,2,3,4,5,6,7,8,9,10,11],
       'major': [0,2,4,5,7,9,11],
       'harmonicMinor': [0,2,3,5,7,8,11],
       'minorPentatonic': [0,3,5,7,10],
@@ -35,35 +35,38 @@ class Util:
     }
 
     chords = {
-      'major': [0,4,7],
-      'minor': [0,3,7],
-      'relMinor1stInv': [0,4,9],
-      'subdominant2ndInv': [0,5,9],
+      'major': [0,4,7,12],
+      'minor': [0,3,7,12],
+      'relMinor1stInv': [0,4,9,12],
+      'subdominant2ndInv': [0,5,9,12],
       'major7th': [0,4,7,11],
       'minor7th': [0,3,7,10],
       'major9th': [0,4,7,14],
       'minor9th': [0,3,7,13],
-      'major6th': [0,4,9],
-      'minor6th': [0,3,8],
+      'major6th': [0,4,9,12],
+      'minor6th': [0,3,8,12],
       'major7th9th': [0,4,7,11,14],
       'minor7th9th': [0,3,7,10,13],
       'major7th11th': [0,4,7,11,18],
       'minor7th11th': [0,3,7,10,17],
+      'augmented': [0,4,8,12],
+      'suspended': [0,5,8,12],
     }
 
     chord_systems = {
+        #'chromatic': [],
         'major': ['major', 'major7th', 'major9th', 'major6th', 'major7th9th', 'major7th11th', 'subdominant2ndInv'],
         'harmonicMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'minorPentatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'minorPentatonic': ['minor', 'minor7th', 'minor9th', 'minor7th9th', 'minor7th11th'],
         'naturalMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'melodicMinorUp': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'melodicMinorDown': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'dorian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'mixolydian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'ahavaRaba': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'majorPentatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'diatonic': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'phrygian': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
+        'melodicMinorUp': ['minor', 'subdominant2ndInv', 'minor9th'],
+        'melodicMinorDown': ['major', 'relMinor1stInv', 'subdominant2ndInv', 'major9th', 'major6th'],
+        'dorian': ['minor', 'subdominant2ndInv', 'minor7th', 'minor9th', 'minor7th9th', 'minor7th11th'],
+        'mixolydian': ['major', 'relMinor1stInv', 'subdominant2ndInv', 'major9th', 'major6th'],
+        'ahavaRaba': ['major', 'major9th', 'augmented', 'suspended'],
+        'majorPentatonic': ['major', 'relMinor1stInv', 'major9th', 'major6th'],
+        'diatonic': ['augmented'],
+        'phrygian': ['minor', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th', 'suspended'],
     }
 
     instrument_sets = [
@@ -242,6 +245,7 @@ class Generator:
                 if Util().notes[note]["name"] == args["base_note"]:
                     self.base_note = note
                     break
+        self.scale_key = scale_key
         self.scale = Util().scales[scale_key]
         self.time_signature = {"count":Util().random_choice([3,4,5,6,8]),"unit":Util().random_choice([4,4,4,4,8,8])}
         log("    Scale: " + scale_key)
@@ -503,10 +507,10 @@ class Generator:
         melody_index = 0
         harmony_index = 0
         valid_intervals = []
-        chord_choice = Util().random_choice(list(Util().chord_systems.keys()))
-        debug("Chord Choice: " + chord_choice)
+        chord_choice = Util().chord_systems[self.scale_key]
+        # After applying a given note to the harmony for the interval, the chance that the note is removed from that interval's choices
         candidate_removal_threshold = 80
-        for chord in Util().chord_systems[chord_choice]:
+        for chord in chord_choice:
             valid_intervals = set(list(valid_intervals) + Util().chords[chord])
         while time < max_time:
             candidate_notes = []
@@ -543,7 +547,6 @@ class Generator:
                 if random.randint(0, 100) < candidate_removal_threshold:
                     secondary_candidate_notes.remove(secondary_pitch)
             time += note_duration
-            debug(harmony)
         return harmony
 
     # Pick a random time interval, recording the note at the beginning and end (Fine-tune to start and stop when melody does?)
@@ -557,8 +560,8 @@ class Generator:
         melody_index = 0
         harmony_index = 0
         valid_intervals = []
-        chord_choice = Util().random_choice(list(Util().chord_systems.keys()))
-        for chord in Util().chord_systems[chord_choice]:
+        chord_choice = Util().chord_systems[self.scale_key]
+        for chord in chord_choice:
             valid_intervals = set(list(valid_intervals) + Util().chords[chord])
         while time < max_time:
             candidate_notes = []
@@ -589,15 +592,30 @@ class Generator:
         melody_index = 0
         melody_duration = 0
         basis = self.melody
-        chord_selection = Util().random_choice(list(Util().chord_systems.keys()))
-        chord_options = Util().chord_systems[chord_selection]
+        chord_options = Util().chord_systems[self.scale_key]
+        #
+        arpeggio_threshold = Util().weighted_choice([(0, .55), (1, .1), (10, .2), (5, .15)])
         for note in basis:
             if random.randint(0,100) < self.rest_threshold*2:
                 continue;
+            arpeggio_threshold_multiplier = 3 if note["duration"] > 1 else 1
+            arpeggio = True if random.randint(0,100) < arpeggio_threshold*arpeggio_threshold_multiplier else False
             chord = Util().chords[Util().random_choice(chord_options)]
-            for idx in chord:
-                harmony_note = {"pitch":note["pitch"] + idx, "time": note["time"], "duration":note["duration"] , "volume": int(100 - idx*2)}
+            offset = 0.1
+            direction = 1
+            if melody_index > 0 and basis[melody_index-1]["pitch"] > note["pitch"]:
+                direction = -1
+            for idx in chord[::direction]:
+                if arpeggio:
+                    time = note["time"] + offset
+                    duration = max(time - offset, offset)
+                else:
+                    time = note["time"]
+                    duration = note["duration"]
+                harmony_note = {"pitch":note["pitch"] + idx, "time": time, "duration":duration, "volume": int(100 - idx*2)}
+                offset += 0.1
                 harmony.append(harmony_note)
+            melody_index += 1
         return harmony
 
     def harmony(self, args={}):
