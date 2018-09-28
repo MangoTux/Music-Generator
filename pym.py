@@ -45,33 +45,18 @@ class Util:
       'minor9th': [0,3,7,13],
       'major6th': [0,4,9,12],
       'minor6th': [0,3,8,12],
-      'major7th9th': [0,4,7,11,14],
-      'minor7th9th': [0,3,7,10,13],
-      'major7th11th': [0,4,7,11,18],
-      'minor7th11th': [0,3,7,10,17],
+    #  'major7th9th': [0,4,7,11,14],
+    #  'minor7th9th': [0,3,7,10,13],
+    #  'major7th11th': [0,4,7,11,18],
+    #  'minor7th11th': [0,3,7,10,17],
       'augmented': [0,4,8,12],
       'suspended': [0,5,8,12],
-    }
-
-    chord_systems = {
-        #'chromatic': [],
-        'major': ['major', 'major7th', 'major9th', 'major6th', 'major7th9th', 'major7th11th', 'subdominant2ndInv'],
-        'harmonicMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'minorPentatonic': ['minor', 'minor7th', 'minor9th', 'minor7th9th', 'minor7th11th'],
-        'naturalMinor': ['minor', 'relMinor1stInv', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th'],
-        'melodicMinorUp': ['minor', 'subdominant2ndInv', 'minor9th'],
-        'melodicMinorDown': ['major', 'relMinor1stInv', 'subdominant2ndInv', 'major9th', 'major6th'],
-        'dorian': ['minor', 'subdominant2ndInv', 'minor7th', 'minor9th', 'minor7th9th', 'minor7th11th'],
-        'mixolydian': ['major', 'relMinor1stInv', 'subdominant2ndInv', 'major9th', 'major6th'],
-        'ahavaRaba': ['major', 'major9th', 'augmented', 'suspended'],
-        'majorPentatonic': ['major', 'relMinor1stInv', 'major9th', 'major6th'],
-        'diatonic': ['augmented'],
-        'phrygian': ['minor', 'minor7th', 'minor9th', 'minor6th', 'minor7th9th', 'minor7th11th', 'suspended'],
+      'diminished': [0,3,6,12]
     }
 
     instrument_sets = [
         #{'melody':72,'harmony':56,'bass':61,'rhythm':112}, # Clarinet/Trumpet/Brass Section/Tinkle Bell
-        {'melody':2,'harmony':2,'bass':49,'rhythm':118}, # Electric Piano/Electric Piano/String Ensemble 2/Synth Drum
+        #{'melody':2,'harmony':2,'bass':49,'rhythm':118}, # Electric Piano/Electric Piano/String Ensemble 2/Synth Drum
         {'melody':0,'harmony':0,'bass':0,'rhythm':118}, # Grand Piano/Grand Piano/Grand Piano/Synth Drum
         #{'melody':71,'harmony':48,'bass':60,'rhythm':118}, # Clarinet/String Ensemble 1/French Horn/Synth Drum
         #{'melody':67,'harmony':75,'bass':105,'rhythm':53}, # Baritone Sax/Pan Flute/Banjo/Voice Oohs
@@ -234,7 +219,7 @@ class Generator:
         if "tempo" in args:
             self.tempo = args["tempo"]
         else:
-            self.tempo = int(numpy.random.normal(120, 32))
+            self.tempo = int(numpy.random.normal(120, 30))
         if "scale" in args and args["scale"] in list(Util().scales.keys()):
             scale_key = args["scale"]
         else:
@@ -248,10 +233,20 @@ class Generator:
         self.scale_key = scale_key
         self.scale = Util().scales[scale_key]
         self.time_signature = {"count":Util().random_choice([3,4,5,6,8]),"unit":Util().random_choice([4,4,4,4,8,8])}
+        self.program_set = Util().random_choice(Util().instrument_sets)
+        if "instrument_melody" in args:
+            self.program_set["melody"] = args["instrument_melody"]
+        if "instrument_harmony" in args:
+            self.program_set["harmony"] = args["instrument_harmony"]
+        if "instrument_bass" in args:
+            self.program_set["bass"] = args["instrument_bass"]
+        if "instrument_rhythm" in args:
+            self.program_set["rhythm"] = args["instrument_rhythm"]
         log("    Scale: " + scale_key)
         log("    Time signature: " + str(self.time_signature["count"]) + "/" + str(self.time_signature["unit"]))
         log("    Base note: " + Util().notes[self.base_note]["name"])
         log("    Tempo: " + str(self.tempo) + " bpm")
+        log("    Program Set: Melody - "+str(self.program_set["melody"])+", Harmony - "+str(self.program_set["harmony"])+", Bass - "+str(self.program_set["bass"])+", Rhythm - " + str(self.program_set["rhythm"]))
 
     def _d_weighted(self, previous, args):
         if "probability" in args:
@@ -499,6 +494,32 @@ class Generator:
             offset += melody_components[x]["duration"]
         self.melody = melody
 
+    def __h_candidate_chord(self, current_note):
+        candidate_chords = []
+        for chord in Util().chords:
+            is_valid = True
+            for offset in Util().chords[chord]:
+                if offset < 12 and (current_note + offset)%12 not in [(self.base_note + i)%12 for i in self.scale]:
+                    is_valid = False
+                    break
+            if is_valid:
+                candidate_chords.append(chord)
+        return candidate_chords
+
+    def _h_combo(self, args={}):
+        log("  Harmony: Combo")
+        args["harmony_chord_threshold"] = 80
+        duplicates = []
+        harmony = self._h_bridge(args) + self._h_discrete_chord(args)
+        for i in range(0, len(harmony)-1):
+            for j in range(i+1, len(harmony)):
+                if harmony[i]["pitch"] == harmony[j]["pitch"] and harmony[i]["time"] == harmony[j]["time"]:
+                    duplicates.append(j)
+        for i in duplicates[::-1]:
+            harmony.pop(i)
+        # Idea: Render other harmonies with arg[start, end] as optional defaulting to 0 and meldoy[-1][time], then pick intervals for different types.
+        return harmony
+
     def _h_multibridge(self, args={}):
         log("  Harmony: Multi Bridge")
         harmony = []
@@ -506,17 +527,17 @@ class Generator:
         max_time = self.melody[-1]["time"] + self.melody[-1]["duration"]
         melody_index = 0
         harmony_index = 0
-        valid_intervals = []
-        chord_choice = Util().chord_systems[self.scale_key]
         # After applying a given note to the harmony for the interval, the chance that the note is removed from that interval's choices
         candidate_removal_threshold = 80
-        for chord in chord_choice:
-            valid_intervals = set(list(valid_intervals) + Util().chords[chord])
+
         while time < max_time:
             candidate_notes = []
             note_duration = Util().random_choice([2,3,4,5,6,7,8])
             harmony_index += 1
             start_note = self.melody[melody_index]["pitch"]
+            valid_intervals = []
+            for chord in self.__h_candidate_chord(start_note):
+                valid_intervals = set(list(valid_intervals) + Util().chords[chord])
             while melody_index < len(self.melody)-1:
                 if time+note_duration < self.melody[melody_index]["time"]+self.melody[melody_index]["duration"]:
                     break
@@ -559,15 +580,15 @@ class Generator:
         max_time = self.melody[-1]["time"] + self.melody[-1]["duration"]
         melody_index = 0
         harmony_index = 0
-        valid_intervals = []
-        chord_choice = Util().chord_systems[self.scale_key]
-        for chord in chord_choice:
-            valid_intervals = set(list(valid_intervals) + Util().chords[chord])
+
         while time < max_time:
             candidate_notes = []
             note_duration = Util().random_choice([2,3,4,5,6,7,8])
             harmony_index += 1
             start_note = self.melody[melody_index]["pitch"]
+            valid_intervals = []
+            for chord in self.__h_candidate_chord(start_note):
+                valid_intervals = set(list(valid_intervals) + Util().chords[chord])
             while melody_index < len(self.melody)-1:
                 if time+note_duration < self.melody[melody_index]["time"]+self.melody[melody_index]["duration"]:
                     break
@@ -592,15 +613,20 @@ class Generator:
         melody_index = 0
         melody_duration = 0
         basis = self.melody
-        chord_options = Util().chord_systems[self.scale_key]
-        #
-        arpeggio_threshold = Util().weighted_choice([(0, .55), (1, .1), (10, .2), (5, .15)])
+        chord_threshold = 30
+        if "harmony_chord_threshold" in args:
+            chord_threshold = args["harmony_chord_threshold"]
+        arpeggio_threshold = Util().weighted_choice([(0, .35), (1, .3), (10, .2), (5, .15)])
+        arpeggio_threshold_multiplier = 0
         for note in basis:
-            if random.randint(0,100) < self.rest_threshold*2:
+            chord_list = self.__h_candidate_chord(note["pitch"])
+            if random.randint(0,100) < chord_threshold or len(chord_list) == 0:
                 continue;
-            arpeggio_threshold_multiplier = 3 if note["duration"] > 1 else 1
+            arpeggio_threshold_multiplier = arpeggio_threshold_multiplier+1 if note["duration"] > 1 else 1
             arpeggio = True if random.randint(0,100) < arpeggio_threshold*arpeggio_threshold_multiplier else False
-            chord = Util().chords[Util().random_choice(chord_options)]
+            chord = Util().chords[Util().random_choice(chord_list)]
+            if arpeggio and random.randint(0,100)<25:
+                chord = list(set(chord + [12 + _ for _ in chord]))
             offset = 0.1
             direction = 1
             if melody_index > 0 and basis[melody_index-1]["pitch"] > note["pitch"]:
@@ -609,6 +635,7 @@ class Generator:
                 if arpeggio:
                     time = note["time"] + offset
                     duration = max(time - offset, offset)
+                    arpeggio_threshold_multiplier *= 1.5
                 else:
                     time = note["time"]
                     duration = note["duration"]
@@ -628,6 +655,8 @@ class Generator:
             harmony = self._h_bridge(args)
         elif type=="multibridge":
             harmony = self._h_multibridge(args)
+        elif type=="combo":
+            harmony = self._h_combo(args)
         else:
             generation_type = [getattr(self, '_h_discrete_chord'), getattr(self, '_h_bridge'), getattr(self, '_h_multibridge')]
             harmony = Util().random_choice(generation_type)(args=args)
@@ -644,7 +673,7 @@ class Generator:
             pitch_drop += 12
         while index < self.melody[-1]["time"]:
             note = {
-                "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":self.time_signature["count"], "volume":75, "index":self.melody[melody_index]["index"]
+                "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":self.time_signature["count"]/aggression, "volume":75, "index":self.melody[melody_index]["index"]
             }
             index += self.time_signature["count"]/aggression
             while melody_index < len(self.melody) and self.melody[melody_index]["time"] < index:
@@ -659,7 +688,7 @@ class Generator:
         melody_index = 0
         next_melody_index = 0
         slide_duration = Util().random_choice([0.5, 1])
-        pitch_drop = Util().random_choice([12, 24])
+        pitch_drop = Util().random_choice([0, 12, 24])
         note_duration = self.time_signature["count"] / Util().random_choice([1, 2])
         should_break = False
         if self.base_note < 55:
@@ -674,7 +703,7 @@ class Generator:
                 "pitch":max(self.melody[melody_index]["pitch"]-pitch_drop, 1), "time":index, "duration":note_duration - slide_duration, "volume":75, "index":self.melody[melody_index]["index"]
             }
             index += note_duration
-            if index < self.melody[-1]["time"]:
+            if index >= self.melody[-1]["time"]:
                 hold_note["duration"] += slide_duration
                 should_break = True
             bass.append(hold_note)
@@ -712,8 +741,13 @@ class Generator:
         # Setting up a baseline for right now
         # Create a config for note lists
         pattern = Util().random_choice([[0.125,0.125,0.125,0.125], [0.25, 0.25, 0.25, 0.25], [0.4,0.1,0.4,0.1],[0.34,0.33,0.33]])
+        special_pattern_list = [[0.03125 for _ in range(16)]+[1],[0.0625 for _ in range(8)]+[1],[1, 1, 1, 1],[2, 2],[4]]
+        special_chance = 10
         total_duration = self.melody[-1]["time"] # + self.melody[-1]["duration"]
+        temp_pattern = pattern
         while index < total_duration:
+            if random.randint(0, 100) < special_chance:
+                temp_pattern, pattern = pattern, Util().random_choice(special_pattern_list)
             for i in range(len(pattern)):
                 volume = 30
                 if i%4 == 0:
@@ -722,6 +756,7 @@ class Generator:
                     volume += 20
                 rhythm.append({"pitch":38,"time":index,"duration":0.05,"volume":volume})
                 index += pattern[i]
+            pattern = temp_pattern
         return rhythm;
 
     def _r_tonal(self, args):
@@ -734,7 +769,7 @@ class Generator:
         total_duration = self.melody[-1]["time"] # + self.melody[-1]["duration"]
         while index < total_duration:
             for i in range(len(pattern)):
-                volume = 60
+                volume = 20
                 if i%4 == 0:
                     volume += 20
                 if i%2 == 0:
@@ -757,7 +792,7 @@ class Generator:
         if "rhythm_type" in args:
             type = args["rhythm_type"]
             percussion_chance = 100
-        if random.randint(0,100) > percussion_chance:
+        if random.randint(0,100) > percussion_chance or type=="none":
             self.rhythm = []
             return
         if type == "atonal":
@@ -861,9 +896,8 @@ class Generator:
                 "harmony": { "channel": 1, "note_series": [], "program": 0},
                 "bass": { "channel": 2, "note_series": [], "program": 0},
                 "rhythm": { "channel": 9, "note_series": [], "program": 0}}
-        program_set = Util().random_choice(Util().instrument_sets)
-        for key in program_set:
-            song[key]["program"] = program_set[key]
+        for key in self.program_set:
+            song[key]["program"] = self.program_set[key]
         song["melody"]["note_series"] = self.melody
         song["harmony"]["note_series"] = self.harmony
         song["bass"]["note_series"] = self.bass
@@ -908,6 +942,7 @@ def main(argv):
     opts, args = getopt.getopt(argv, 'vdhp:o:c:s:', ['verbose', 'debug', 'help', 'output=','config=','params=','seed='])
     song_name = time.strftime('song-%Y-%m-%d_%H%M%S.mid')
     custom_args = {}
+    base_seed = str(random.randint(0, 2**32 - 1))
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             print('python '+__main__.__file__+' [--output=<outputfile>] [--help] [--config=<config_file>] [--params=<params>]')
@@ -923,10 +958,11 @@ def main(argv):
         elif opt in ("-p", "--params"):
             continue
         elif opt in ("-s", "--seed"):
-            seed = int(hashlib.sha256(arg.encode('utf-8')).hexdigest(), 16) % (2**32 - 1)
-            random.seed(seed)
-            numpy.random.seed(seed)
-    log("Starting...")
+            base_seed = str(arg)
+    seed = int(hashlib.sha256(base_seed.encode('utf-8')).hexdigest(), 16) % (2**32 - 1)
+    random.seed(seed)
+    numpy.random.seed(seed)
+    log("Starting... [Seed: "+str(base_seed)+"]")
     generator = Generator(custom_args)
     transcriber = Transcriber(song_name)
     transcriber.compile(generator)

@@ -26,11 +26,10 @@ todo:
 Planned Updates
 ---------------
 
-Postprocess resolve to base_note
+Slide seems to break and hold a continuous note. File stored to investigate later.
 Dynamic percussion elements
 Break out sections into their own files for better readability
 Better instrument layout
-Better Harmony for non-Major/minor scales
 Post-processing for melodies to sound more natural
 Key change logic
 More duration options
