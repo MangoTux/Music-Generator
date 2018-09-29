@@ -248,6 +248,11 @@ class Generator:
         log("    Tempo: " + str(self.tempo) + " bpm")
         log("    Program Set: Melody - "+str(self.program_set["melody"])+", Harmony - "+str(self.program_set["harmony"])+", Bass - "+str(self.program_set["bass"])+", Rhythm - " + str(self.program_set["rhythm"]))
 
+    def _d_static(self, previous, args):
+        if "duration_length" in args:
+            return args["duration_length"]
+        return 0.5
+
     def _d_weighted(self, previous, args):
         if "probability" in args:
             probability = args["probability"]
@@ -293,7 +298,9 @@ class Generator:
         return Util().weighted_choice(probability[previous])
 
     def _duration(self, type="random", note=1, args={}):
-        if type=="weighted":
+        if type=="static":
+            return self._d_static(note, args)
+        elif type=="weighted":
             return self._d_weighted(note, args)
         elif type=="uniform":
             return self._d_uniform(note, args)
@@ -428,7 +435,7 @@ class Generator:
         if "duration_type" in args:
             duration_type = args["duration_type"]
         else:
-            duration_type = 0.5
+            duration_type = "random"
         # Generate a main theme for the melody to repeat >1 time in song
         verse = []
         note_value = self.base_note
@@ -529,7 +536,7 @@ class Generator:
         harmony_index = 0
         # After applying a given note to the harmony for the interval, the chance that the note is removed from that interval's choices
         candidate_removal_threshold = 80
-
+        octave_diff = Util().weighted_choice([(0, 0.80), (-1, 0.2)])
         while time < max_time:
             candidate_notes = []
             note_duration = Util().random_choice([2,3,4,5,6,7,8])
@@ -549,7 +556,7 @@ class Generator:
                 if i in available_end:
                     candidate_notes.append(i)
             if len(candidate_notes) > 0:
-                harmony.append({"pitch":candidate_notes[0],"time":time,"duration":note_duration,"volume":90})
+                harmony.append({"pitch":candidate_notes[0] + 12*octave_diff,"time":time,"duration":note_duration,"volume":90})
             secondary_candidate_notes = []
             index = 1
             while index < len(candidate_notes):
@@ -563,7 +570,7 @@ class Generator:
                 secondary_pitch = Util().random_choice(secondary_candidate_notes)
                 if secondary_duration <= 0:
                     break
-                harmony.append({"pitch":secondary_pitch, "time": elapsed_duration, "duration": secondary_duration, "volume": 75})
+                harmony.append({"pitch":secondary_pitch + 12*octave_diff, "time": elapsed_duration, "duration": secondary_duration, "volume": 75})
                 elapsed_duration += secondary_duration
                 if random.randint(0, 100) < candidate_removal_threshold:
                     secondary_candidate_notes.remove(secondary_pitch)
@@ -580,7 +587,7 @@ class Generator:
         max_time = self.melody[-1]["time"] + self.melody[-1]["duration"]
         melody_index = 0
         harmony_index = 0
-
+        octave_diff = Util().weighted_choice([(0, 0.80), (-1, 0.2)])
         while time < max_time:
             candidate_notes = []
             note_duration = Util().random_choice([2,3,4,5,6,7,8])
@@ -600,7 +607,7 @@ class Generator:
                 if i in available_end:
                     candidate_notes.append(i)
             if len(candidate_notes) > 0:
-                harmony.append({"pitch":Util().random_choice(candidate_notes),"time":time,"duration":note_duration,"volume":90})
+                harmony.append({"pitch":Util().random_choice(candidate_notes) + 12*octave_diff,"time":time,"duration":note_duration,"volume":90})
             time += note_duration
         return harmony
 
@@ -649,7 +656,9 @@ class Generator:
         type="random"
         if "harmony_type" in args:
             type = args["harmony_type"]
-        if type=="discrete_chord":
+        if type=="none":
+            harmony = []
+        elif type=="discrete_chord":
             harmony = self._h_discrete_chord(args)
         elif type=="bridge":
             harmony = self._h_bridge(args)
@@ -661,6 +670,51 @@ class Generator:
             generation_type = [getattr(self, '_h_discrete_chord'), getattr(self, '_h_bridge'), getattr(self, '_h_multibridge')]
             harmony = Util().random_choice(generation_type)(args=args)
         self.harmony = harmony
+
+    # Similar implementation to _h_multibridge, but pitch-shifted
+    def _b_multibridge(self, args={}):
+        pass
+
+    # Alternates between root and 5th. Oom-Pah for quater-time, Oom-Pah-Pah for Triple Time
+    def _b_oompah(self, args={}):
+        log("  Bass: Oompah")
+        bass = []
+        index = 0
+        melody_index = 0
+        pitch_drop = Util().random_choice([12, 24])
+        duration = 1.0 * self.time_signature["unit"] / Util().weighted_choice([(4, 0.1), (8, 0.9)])
+        oom_volume = Util().random_choice([60, 70, 80])
+        pah_volume = oom_volume - 15
+        pah_index = Util().random_choice([3, 4, 5])
+        pahup_index = 2
+        is_double = random.randint(0, 100) < 35
+        while index < self.melody[-1]["time"]:
+            root_note = self.melody[melody_index]
+            note_oom = {
+                "pitch":max(root_note["pitch"]-pitch_drop, 1), "time": index, "duration":duration, "index":root_note["index"], "volume": oom_volume
+            }
+            pah_value = max(note_oom["pitch"] + 12 * int((pah_index + note_oom["index"]) / len(self.scale)) + self.scale[(note_oom["index"] + pah_index) % len(self.scale)], 1)
+            note_pah = {
+                "pitch":pah_value, "time": index + duration, "duration":0.1, "index":root_note["index"]+pah_index, "volume": pah_volume
+            }
+            bass.append(note_oom)
+            bass.append(note_pah)
+            if is_double:
+                pahup_value = note_oom["pitch"] + 12 * int((pah_index + note_oom["index"] + pahup_index) / len(self.scale)) + self.scale[(note_oom["index"] + pah_index + 2) % len(self.scale)]
+                note_pahup = {
+                    "pitch": pahup_value, "time": index + duration, "duration":0.1, "index":root_note["index"]+pah_index+pahup_index, "volume": pah_volume - 15
+                }
+                bass.append(note_pahup)
+            if self.time_signature["unit"] == 8 and not (self.time_signature["count"] == 5 and index*4%10!=0): #
+                note_pah_pah = {
+                    "pitch":pah_value, "time": index + duration*2, "duration":0.1, "index":root_note["index"]+pah_index, "volume": pah_volume
+                }
+                bass.append(note_pah_pah)
+                index += duration
+            index += duration*2
+            while melody_index < len(self.melody) and self.melody[melody_index]["time"] < index:
+                melody_index += 1
+        return bass
 
     def _b_pulse(self, args={}):
         log("  Bass: Pulse")
@@ -725,12 +779,16 @@ class Generator:
         type="random"
         if "bass_type" in args:
             type = args["bass_type"]
-        if type=="slide":
+        if type=="none":
+            bass = []
+        elif type=="oompah":
+            bass = self._b_oompah(args)
+        elif type=="slide":
             bass = self._b_slide(args)
         elif type=="pulse":
             bass = self._b_pulse(args)
         else:
-            generation_type = [getattr(self, '_b_slide'), getattr(self, '_b_pulse')]
+            generation_type = [getattr(self, '_b_oompah'), getattr(self, '_b_slide'), getattr(self, '_b_pulse')]
             bass = Util().random_choice(generation_type)(args=args)
         self.bass = bass
 
@@ -807,7 +865,7 @@ class Generator:
         keychange_threshold = 25
         if on_verse[1] < 3 or random.randint(0, 100) > keychange_threshold:
             return
-        log("Applying keychange to song on final " + on_verse[0])
+        log("  Applying keychange to song on final " + on_verse[0])
         timestamp_start = 0;
         # Todo get suitable candidate for key change
         # Get note delta from base note
@@ -902,6 +960,7 @@ class Generator:
         song["harmony"]["note_series"] = self.harmony
         song["bass"]["note_series"] = self.bass
         song["rhythm"]["note_series"] = self.rhythm
+        debug(song)
         self.song = song
 
 class Transcriber:
